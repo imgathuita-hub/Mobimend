@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mobimend Admin - Inventory</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Roboto', sans-serif;
+      background: #f6f7fb;
+      color: #1f2933;
+    }
+    header {
+      background: #1766c5;
+      color: #fff;
+      padding: 20px;
+    }
+    header h1 { margin: 0; font-family: 'Montserrat', sans-serif; }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; }
+    .row input, .row select, .row textarea {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #d7dbe3;
+      flex: 1;
+      min-width: 180px;
+    }
+    button {
+      background: #1766c5;
+      color: #fff;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: #6b7280;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+    }
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #eef0f4;
+      text-align: left;
+    }
+    th { background: #f1f5f9; font-weight: 700; }
+    .small { font-size: 0.9rem; color: #556070; }
+    .actions button { margin-right: 6px; }
+    .token-box { font-family: monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Mobimend Inventory Admin</h1>
+    <div class="small">Login, then manage inventory items</div>
+  </header>
+
+  <div class="container">
+    <div class="card">
+      <h3>Admin Login</h3>
+      <div class="row">
+        <input id="email" type="email" placeholder="Email">
+        <input id="password" type="password" placeholder="Password">
+        <button id="loginBtn">Login</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <input id="tokenInput" type="text" placeholder="Paste token here if you already have one">
+        <button id="saveTokenBtn" class="secondary">Save Token</button>
+      </div>
+      <div class="small" style="margin-top:8px;">Current token:</div>
+      <div id="tokenDisplay" class="token-box small">Not set</div>
+    </div>
+
+    <div class="card">
+      <h3>Add / Update Inventory</h3>
+      <div class="row">
+        <input id="brand" type="text" placeholder="Brand">
+        <input id="model" type="text" placeholder="Model">
+        <input id="partType" type="text" placeholder="Part Type">
+        <input id="quantity" type="number" placeholder="Quantity">
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <input id="buyPrice" type="number" placeholder="Buy Price">
+        <input id="sellPrice" type="number" placeholder="Sell Price">
+        <input id="status" type="text" placeholder="Status (in_stock)">
+        <input id="notes" type="text" placeholder="Notes">
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="createBtn">Create</button>
+        <button id="updateBtn" class="secondary">Update Selected</button>
+        <button id="clearBtn" class="secondary">Clear Form</button>
+      </div>
+      <div class="small" id="selectedId" style="margin-top:8px;">Selected: none</div>
+    </div>
+
+    <div class="card">
+      <h3>Inventory Items</h3>
+      <button id="refreshBtn">Refresh</button>
+      <table style="margin-top:12px;">
+        <thead>
+          <tr>
+            <th>Brand</th>
+            <th>Model</th>
+            <th>Part</th>
+            <th>Qty</th>
+            <th>Buy</th>
+            <th>Sell</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="inventoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:4000/api";
+    const tokenKey = "mobimend_token";
+    let selectedId = null;
+
+    const tokenDisplay = document.getElementById("tokenDisplay");
+    const tokenInput = document.getElementById("tokenInput");
+
+    const setToken = (token) => {
+      localStorage.setItem(tokenKey, token);
+      tokenDisplay.textContent = token || "Not set";
+    };
+
+    const getToken = () => localStorage.getItem(tokenKey);
+
+    setToken(getToken() || "");
+
+    document.getElementById("loginBtn").addEventListener("click", async () => {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
+      if (!email || !password) {
+        alert("Email and password are required");
+        return;
+      }
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Login failed");
+        return;
+      }
+      setToken(data.token);
+      alert("Logged in");
+    });
+
+    document.getElementById("saveTokenBtn").addEventListener("click", () => {
+      setToken(tokenInput.value.trim());
+    });
+
+    const getFormData = () => ({
+      brand: document.getElementById("brand").value.trim(),
+      model: document.getElementById("model").value.trim(),
+      partType: document.getElementById("partType").value.trim(),
+      quantity: Number(document.getElementById("quantity").value || 0),
+      buyPrice: Number(document.getElementById("buyPrice").value || 0),
+      sellPrice: Number(document.getElementById("sellPrice").value || 0),
+      status: document.getElementById("status").value.trim() || "in_stock",
+      notes: document.getElementById("notes").value.trim()
+    });
+
+    const clearForm = () => {
+      ["brand","model","partType","quantity","buyPrice","sellPrice","status","notes"].forEach(id => {
+        document.getElementById(id).value = "";
+      });
+      selectedId = null;
+      document.getElementById("selectedId").textContent = "Selected: none";
+    };
+
+    document.getElementById("clearBtn").addEventListener("click", clearForm);
+
+    document.getElementById("createBtn").addEventListener("click", async () => {
+      const token = getToken();
+      if (!token) return alert("Login first");
+      const payload = getFormData();
+      const res = await fetch(`${API_BASE}/inventory`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Create failed");
+        return;
+      }
+      clearForm();
+      loadInventory();
+    });
+
+    document.getElementById("updateBtn").addEventListener("click", async () => {
+      const token = getToken();
+      if (!token) return alert("Login first");
+      if (!selectedId) return alert("Select an item first");
+      const payload = getFormData();
+      const res = await fetch(`${API_BASE}/inventory/${selectedId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Update failed");
+        return;
+      }
+      clearForm();
+      loadInventory();
+    });
+
+    const deleteItem = async (id) => {
+      const token = getToken();
+      if (!token) return alert("Login first");
+      if (!confirm("Delete this item?")) return;
+      const res = await fetch(`${API_BASE}/inventory/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Delete failed");
+        return;
+      }
+      loadInventory();
+    };
+
+    const selectItem = (item) => {
+      selectedId = item._id;
+      document.getElementById("brand").value = item.brand || "";
+      document.getElementById("model").value = item.model || "";
+      document.getElementById("partType").value = item.partType || "";
+      document.getElementById("quantity").value = item.quantity || 0;
+      document.getElementById("buyPrice").value = item.buyPrice || 0;
+      document.getElementById("sellPrice").value = item.sellPrice || 0;
+      document.getElementById("status").value = item.status || "in_stock";
+      document.getElementById("notes").value = item.notes || "";
+      document.getElementById("selectedId").textContent = `Selected: ${item._id}`;
+    };
+
+    const loadInventory = async () => {
+      const res = await fetch(`${API_BASE}/inventory`);
+      const items = await res.json();
+      const body = document.getElementById("inventoryBody");
+      body.innerHTML = "";
+      items.forEach(item => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.brand || ""}</td>
+          <td>${item.model || ""}</td>
+          <td>${item.partType || ""}</td>
+          <td>${item.quantity ?? ""}</td>
+          <td>${item.buyPrice ?? ""}</td>
+          <td>${item.sellPrice ?? ""}</td>
+          <td>${item.status || ""}</td>
+          <td class="actions">
+            <button data-action="select">Edit</button>
+            <button data-action="delete" class="secondary">Delete</button>
+          </td>
+        `;
+        row.querySelector('[data-action="select"]').addEventListener("click", () => selectItem(item));
+        row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteItem(item._id));
+        body.appendChild(row);
+      });
+    };
+
+    document.getElementById("refreshBtn").addEventListener("click", loadInventory);
+    loadInventory();
+  </script>
+</body>
+</html>

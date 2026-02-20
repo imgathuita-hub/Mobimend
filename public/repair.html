@@ -233,7 +233,7 @@
   <div class="modal-content">
     <span class="close">&times;</span>
     <h2>Book a Repair</h2>
-    <form action="book_repair.php" method="POST" class="booking-form">
+    <form action="#" method="POST" class="booking-form" id="bookingForm">
       <label>Full Name:</label>
       <input type="text" name="customer_name" required>
 
@@ -253,10 +253,24 @@
       <textarea name="issue_description" rows="3"></textarea>
 
       <button type="submit">Submit Booking</button>
+      <div id="bookingStatus" style="margin-top:10px; font-size:0.95rem;"></div>
     </form>
   </div>
 </div>
 
+<div class="chatbot">
+  <button class="chatbot-toggle" aria-controls="chatbot-panel" aria-expanded="false">Chat</button>
+  <div class="chatbot-panel" id="chatbot-panel" aria-hidden="true">
+    <div class="chatbot-header">Mobimend Assistant</div>
+    <div class="chatbot-messages"></div>
+    <div class="chatbot-input-row">
+      <input class="chatbot-input" type="text" placeholder="Ask about repairs, prices, parts..." />
+      <button class="chatbot-send" type="button">Send</button>
+    </div>
+  </div>
+</div>
+
+<script src="chatbot.js"></script>
 <script>
 const modal = document.getElementById('bookingModal');
 const closeModal = document.querySelector('.close');
@@ -272,6 +286,46 @@ bookButtons.forEach(button => {
 
 closeModal.onclick = () => modal.style.display = 'none';
 window.onclick = e => { if (e.target == modal) modal.style.display = 'none'; }
+</script>
+<script>
+const bookingForm = document.getElementById('bookingForm');
+const bookingStatus = document.getElementById('bookingStatus');
+const API_BASE = "http://localhost:4000/api";
+
+bookingForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  bookingStatus.textContent = "Submitting...";
+  bookingStatus.style.color = "#333";
+
+  const payload = {
+    customerName: bookingForm.customer_name.value.trim(),
+    phoneNumber: bookingForm.phone_number.value.trim(),
+    email: bookingForm.email.value.trim(),
+    deviceModel: bookingForm.device_model.value.trim(),
+    repairType: bookingForm.repair_type.value.trim(),
+    issueDescription: bookingForm.issue_description.value.trim()
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/repairs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      bookingStatus.textContent = data.error || "Booking failed. Please try again.";
+      bookingStatus.style.color = "#c02626";
+      return;
+    }
+    bookingStatus.textContent = "Booking submitted! We will contact you shortly.";
+    bookingStatus.style.color = "#166534";
+    bookingForm.reset();
+  } catch (err) {
+    bookingStatus.textContent = "Network error. Please try again.";
+    bookingStatus.style.color = "#c02626";
+  }
+});
 </script>
 
 
