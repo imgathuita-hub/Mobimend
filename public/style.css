@@ -1362,6 +1362,13 @@ footer {
   flex-wrap: wrap;
 }
 
+.repair-buttons a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
 .btn-primary,
 .btn-outline {
   text-decoration: none;
@@ -1392,6 +1399,27 @@ footer {
 .btn-outline:hover {
   background: #fff;
   border-color: #fff;
+}
+
+.service-card .book-now {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: #0056d6;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.service-card .book-now:hover {
+  background: #0047b3;
+}
+
+.service-card .book-now:active {
+  transform: translateY(1px);
 }
 
 /* ---------- Mobile responsive ---------- */
@@ -1438,6 +1466,10 @@ footer {
     max-width: 320px;
     margin: 0 auto;
     text-align: center;
+  }
+
+  .service-card .book-now {
+    font-size: 1rem;
   }
 }
 
@@ -2047,6 +2079,51 @@ footer {
   justify-content: center;
   gap: 20px;
   flex-wrap: wrap;
+}
+
+.repair-cta .cta-buttons a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 22px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.repair-cta .cta-buttons .btn.primary {
+  background: #fff;
+  color: #0d6efd;
+}
+
+.repair-cta .cta-buttons .btn.secondary {
+  border: 2px solid #fff;
+  color: #fff;
+  background: transparent;
+}
+
+.repair-cta .cta-buttons .btn.primary:hover {
+  background: #f3f4f6;
+}
+
+.repair-cta .cta-buttons .btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 768px) {
+  .repair-buttons,
+  .repair-cta .cta-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .repair-buttons a,
+  .repair-cta .cta-buttons a {
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+  }
 }
 
 .cta .btn {

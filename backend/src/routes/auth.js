@@ -5,7 +5,20 @@ const User = require("../models/User");
 
 const router = express.Router();
 
-router.post("/register", async (req, res) => {
+// Require a one-time setup token to create admin accounts.
+const requireSetupToken = (req, res, next) => {
+  const configured = process.env.ADMIN_SETUP_TOKEN;
+  if (!configured) {
+    return res.status(403).json({ error: "Admin registration is disabled" });
+  }
+  const token = req.header("x-admin-setup-token");
+  if (!token || token !== configured) {
+    return res.status(403).json({ error: "Invalid setup token" });
+  }
+  return next();
+};
+
+router.post("/register", requireSetupToken, async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Name, email, and password are required" });

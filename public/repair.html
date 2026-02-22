@@ -42,10 +42,7 @@
   <div class="repair-content">
     <h1>Expert Phone Repair Services</h1>
     <p>Fast, reliable repairs by certified technicians. Same-day service available with genuine parts and comprehensive warranty.</p>
-    <div class="repair-buttons">
-      <a href="#" class="btn-primary">Book Repair Online</a>
-      <a href="#" class="btn-outline">Free Diagnosis</a>
-    </div>
+    
   </div>
 </section>
 
@@ -64,7 +61,7 @@
         <div class="icon-box">📱</div>
         <h3>Screen Replacement</h3>
         <p>High-quality LCD and OLED screen replacements for all major phone brands.</p>
-        <div class="price">From $79</div>
+        <div class="price">From 2499</div>
         <span class="duration">30-60 mins</span>
         <button class="book-now" data-repair="Screen Replacement">Book Now</button>
 
@@ -75,9 +72,9 @@
         <div class="icon-box">🔋</div>
         <h3>Battery Replacement</h3>
         <p>Original battery replacements to restore your phone's battery life.</p>
-        <div class="price">From $49</div>
+        <div class="price">From 1999</div>
         <span class="duration">20-30 mins</span>
-        <button class="book-now" data-repair="Battery Replacemen">Book Now</button>
+        <button class="book-now" data-repair="Battery Replacement">Book Now</button>
 
        
       </div>
@@ -86,7 +83,7 @@
         <div class="icon-box">💧</div>
         <h3>Water Damage Repair</h3>
         <p>Professional water damage assessment and repair services.</p>
-        <div class="price">From $99</div>
+        <div class="price">From 999</div>
         <span class="duration">2-24 hours</span>
         <button class="book-now" data-repair="Water Damage Repair">Book Now</button>
       </div>
@@ -95,7 +92,7 @@
         <div class="icon-box">🎤</div>
         <h3>Speaker & Microphone</h3>
         <p>Audio component repairs for crystal clear sound quality.</p>
-        <div class="price">From $69</div>
+        <div class="price">From 499</div>
         <span class="duration">45-90 mins</span>
         <button class="book-now" data-repair="Speaker & Microphone">Book Now</button>
       </div>
@@ -104,7 +101,7 @@
         <div class="icon-box">📷</div>
         <h3>Camera Repair</h3>
         <p>Front and rear camera repairs and replacements.</p>
-        <div class="price">From $89</div>
+        <div class="price">From 1999</div>
         <span class="duration">60-90 mins</span>
         <button class="book-now" data-repair="Camera Repair">Book Now</button>
       </div>
@@ -113,7 +110,7 @@
         <div class="icon-box">🔌</div>
         <h3>Charging Port Repair</h3>
         <p>Fix charging issues with professional port cleaning and replacement.</p>
-        <div class="price">From $59</div>
+        <div class="price">499</div>
         <span class="duration">30-45 mins</span>
        <button class="book-now" data-repair="Charging Port Repair">Book Now</button>
       </div>
@@ -198,10 +195,10 @@
     <div class="pricing-box">
       <h3>iPhone Repairs</h3>
       <ul>
-        <li><span>Screen Replacement</span> <span>$79 - $299</span></li>
-        <li><span>Battery Replacement</span> <span>$49 - $89</span></li>
-        <li><span>Camera Repair</span> <span>$89 - $149</span></li>
-        <li><span>Charging Port</span> <span>$59 - $99</span></li>
+        <li><span>Screen Replacement</span> <span>7499</span></li>
+        <li><span>Battery Replacement</span> <span>4499</span></li>
+        <li><span>Camera Repair</span> <span>2999</span></li>
+        <li><span>Charging Port</span> <span>1999</span></li>
       </ul>
     </div>
 
@@ -209,10 +206,10 @@
     <div class="pricing-box">
       <h3>Android Repairs</h3>
       <ul>
-        <li><span>Screen Replacement</span> <span>$69 - $249</span></li>
-        <li><span>Battery Replacement</span> <span>$39 - $79</span></li>
-        <li><span>Camera Repair</span> <span>$79 - $129</span></li>
-        <li><span>Charging Port</span> <span>$49 - $89</span></li>
+        <li><span>Screen Replacement</span> <span>2499</span></li>
+        <li><span>Battery Replacement</span> <span>1899</span></li>
+        <li><span>Camera Repair</span> <span>2499</span></li>
+        <li><span>Charging Port</span> <span>499</span></li>
       </ul>
     </div>
   </div>
@@ -312,13 +309,17 @@ bookingForm.addEventListener('submit', async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      bookingStatus.textContent = data.error || "Booking failed. Please try again.";
+      const detailText = data.details
+        ? ` ${Object.values(data.details).join(" ")}`
+        : "";
+      bookingStatus.textContent = (data.error || "Booking failed. Please try again.") + detailText;
       bookingStatus.style.color = "#c02626";
       return;
     }
-    bookingStatus.textContent = "Booking submitted! We will contact you shortly.";
+    const newId = data.bookingId ? ` Booking ID: ${data.bookingId}.` : "";
+    bookingStatus.textContent = `Booking submitted! We will contact you shortly.${newId}`;
     bookingStatus.style.color = "#166534";
     bookingForm.reset();
   } catch (err) {
