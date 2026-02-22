@@ -49,8 +49,8 @@
         
       </p>
       <div class="buttons">
-        <a href="#" class="btn primary">Get Free Quote</a>
-        <a href="#" class="btn secondary">Book Repair Now</a>
+        <a href="#" class="btn primary open-booking">Get Free Quote</a>
+        <a href="#" class="btn secondary open-booking">Book Repair Now</a>
       </div>
 
           <div class="features">
@@ -288,7 +288,7 @@
       <h2>Ready to Get Started?</h2>
       <p>Whether you need wholesale phones, expert repairs, or premium accessories, we're here to help. Contact us today for a free consultation.</p>
       <div class="footer-buttons">
-        <a href="#" class="btn-primary">Book Repair Online</a>
+        <a href="#" class="btn-primary open-booking">Book Repair Online</a>
         <a href="#" class="btn-outline">Call Us Now</a>
       </div>
       <div class="footer-contact-line">
@@ -363,6 +363,130 @@
     </div>
   </div>
 
+  <!-- Booking Wizard Modal -->
+  <div id="bookingWizard" class="modal">
+    <div class="modal-content booking-wizard">
+      <span class="close" id="bookingClose">&times;</span>
+      <div class="wizard-header">
+        <h2>Book a Repair</h2>
+        <div class="wizard-steps">
+          <div class="wizard-step active" data-step="1">1</div>
+          <div class="wizard-step" data-step="2">2</div>
+          <div class="wizard-step" data-step="3">3</div>
+        </div>
+      </div>
+
+      <form id="bookingWizardForm">
+        <!-- Step 1 -->
+        <div class="wizard-panel active" data-panel="1">
+          <h3>Step 1: Personal Details</h3>
+          <div class="form-grid">
+            <div>
+              <label for="bw_name">Full Name</label>
+              <input id="bw_name" name="name" type="text" required>
+            </div>
+            <div>
+              <label for="bw_email">Email</label>
+              <input id="bw_email" name="email" type="email" required>
+            </div>
+            <div>
+              <label for="bw_phone">Phone Number</label>
+              <input id="bw_phone" name="phone" type="tel" required>
+            </div>
+            <div>
+              <label for="bw_device">Device Model</label>
+              <input id="bw_device" name="device" type="text" required>
+            </div>
+            <div class="full">
+              <label for="bw_issue">Issue Type</label>
+              <select id="bw_issue" name="issue" required>
+                <option value="">Select issue type</option>
+                <option>Screen Replacement</option>
+                <option>Battery Replacement</option>
+                <option>Water Damage</option>
+                <option>Speaker Replacement</option>
+                <option>Software Issue</option>
+              </select>
+            </div>
+          </div>
+          <div class="step-status" id="step1Status"></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="wizard-panel" data-panel="2">
+          <h3>Step 2: Booking Details</h3>
+          <div class="form-grid">
+            <div>
+              <label for="bw_date">Preferred Date</label>
+              <select id="bw_date" name="date" required>
+                <option value="">Select date</option>
+                <option>Monday</option>
+                <option>Tuesday</option>
+                <option>Wednesday</option>
+                <option>Thursday</option>
+                <option>Friday</option>
+                <option>Saturday</option>
+              </select>
+            </div>
+            <div>
+              <label for="bw_time">Preferred Time</label>
+              <select id="bw_time" name="time" required>
+                <option value="">Select time</option>
+                <option>9:00 AM</option>
+                <option>10:00 AM</option>
+                <option>11:00 AM</option>
+                <option>1:00 PM</option>
+                <option>2:00 PM</option>
+                <option>3:00 PM</option>
+                <option>4:00 PM</option>
+              </select>
+            </div>
+            <div class="full">
+              <label for="bw_location">Location</label>
+              <select id="bw_location" name="location" required>
+                <option>Juja Mum&Dad Business Center, Stall 9E</option>
+              </select>
+            </div>
+            <div class="full">
+              <label for="bw_notes">Additional Notes (Optional)</label>
+              <textarea id="bw_notes" name="notes" rows="3" placeholder="Any extra details we should know?"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="wizard-panel" data-panel="3">
+          <h3>Step 3: Review & Confirm</h3>
+          <div class="review-grid" id="reviewGrid"></div>
+          <div class="expect-box">
+            <h4>What to expect</h4>
+            <ul>
+              <li>Free diagnostic assessment</li>
+              <li>Detailed quote before any work begins</li>
+              <li>90 day warranty on all repairs</li>
+              <li>Email confirmation with booking orders</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Confirmation -->
+        <div class="wizard-panel" data-panel="4">
+          <div class="confirm-box">
+            <h3>Booking confirmed! Booking confirmed!</h3>
+            <p>We'll send you a confirmation email shortly.</p>
+            <p><strong>Booking ID:</strong> <span id="bookingId"></span></p>
+            <p>Please arrive 10 minutes early and bring your device and charger.</p>
+          </div>
+        </div>
+
+        <div class="wizard-actions">
+          <button type="button" class="btn-outline" id="wizardBack">Back</button>
+          <button type="button" class="btn-primary" id="wizardNext">Next</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="chatbot.js"></script>
   <script>
   const toggle = document.getElementById('menu-toggle');
@@ -370,6 +494,106 @@
 
   toggle.addEventListener('click', () => {
     navLinks.classList.toggle('show');
+  });
+</script>
+<script>
+  const bookingModal = document.getElementById('bookingWizard');
+  const bookingClose = document.getElementById('bookingClose');
+  const openButtons = document.querySelectorAll('.open-booking');
+  const panels = Array.from(document.querySelectorAll('.wizard-panel'));
+  const stepDots = Array.from(document.querySelectorAll('.wizard-step'));
+  const nextBtn = document.getElementById('wizardNext');
+  const backBtn = document.getElementById('wizardBack');
+  const form = document.getElementById('bookingWizardForm');
+  const step1Status = document.getElementById('step1Status');
+  const reviewGrid = document.getElementById('reviewGrid');
+  const bookingId = document.getElementById('bookingId');
+
+  let currentStep = 1;
+
+  const setStep = (step) => {
+    currentStep = step;
+    panels.forEach((panel) => {
+      panel.classList.toggle('active', Number(panel.dataset.panel) === step);
+    });
+    stepDots.forEach((dot) => {
+      dot.classList.toggle('active', Number(dot.dataset.step) <= step);
+    });
+    backBtn.style.display = step <= 1 || step === 4 ? 'none' : 'inline-flex';
+    nextBtn.textContent = step === 3 ? 'Confirm Booking' : 'Next';
+    nextBtn.style.display = step === 4 ? 'none' : 'inline-flex';
+  };
+
+  const openModal = (e) => {
+    e.preventDefault();
+    bookingModal.style.display = 'flex';
+    setStep(1);
+    step1Status.textContent = '';
+    form.reset();
+  };
+
+  openButtons.forEach((btn) => btn.addEventListener('click', openModal));
+
+  bookingClose.addEventListener('click', () => {
+    bookingModal.style.display = 'none';
+  });
+
+  window.addEventListener('click', (e) => {
+    if (e.target === bookingModal) bookingModal.style.display = 'none';
+  });
+
+  const validateStep = (step) => {
+    const panel = document.querySelector(`.wizard-panel[data-panel="${step}"]`);
+    const fields = Array.from(panel.querySelectorAll('input, select'));
+    const invalid = fields.find((f) => f.required && !f.value.trim());
+    if (invalid) {
+      invalid.focus();
+      return false;
+    }
+    return true;
+  };
+
+  const buildReview = () => {
+    const data = new FormData(form);
+    const items = [
+      ["Name", data.get("name")],
+      ["Email", data.get("email")],
+      ["Phone", data.get("phone")],
+      ["Device Model", data.get("device")],
+      ["Issue Type", data.get("issue")],
+      ["Date", data.get("date")],
+      ["Time", data.get("time")],
+      ["Location", data.get("location")],
+      ["Notes", data.get("notes") || "None"]
+    ];
+
+    reviewGrid.innerHTML = items
+      .map(([label, value]) => `<div class="review-item"><span>${label}</span><strong>${value}</strong></div>`)
+      .join("");
+  };
+
+  nextBtn.addEventListener('click', () => {
+    if (!validateStep(currentStep)) return;
+
+    if (currentStep === 1) {
+      step1Status.textContent = "Step 1 completed. You're good to continue.";
+    }
+
+    if (currentStep === 2) {
+      buildReview();
+    }
+
+    if (currentStep === 3) {
+      bookingId.textContent = `MB-${Math.floor(100000 + Math.random() * 900000)}`;
+      setStep(4);
+      return;
+    }
+
+    setStep(currentStep + 1);
+  });
+
+  backBtn.addEventListener('click', () => {
+    if (currentStep > 1) setStep(currentStep - 1);
   });
 </script>
 </body>

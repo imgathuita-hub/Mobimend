@@ -76,7 +76,7 @@
     {
       keywords: ["phone", "contact", "call", "number"],
       response:
-        "You can call us at 0799 13907 or ask me to help you book a repair.",
+        "You can call us at 0799 183907 or ask me to help you book a repair.",
     },
     {
       keywords: ["email", "mail"],
