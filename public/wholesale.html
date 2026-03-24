@@ -141,63 +141,85 @@
     <p class="section-subtitle">Wide selection of popular smartphone brands</p>
 
     <div class="brands-grid">
-      <div class="brand-card">
+      <button type="button" class="brand-card brand-trigger" data-brand="apple">
         <img src="assets/apple.png" alt="Apple iPhone">
         <p>Apple iPhone</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="samsung">
         <img src="assets/samsung.png" alt="Samsung Galaxy">
         <p>Samsung Galaxy</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="google">
         <img src="assets/google.png" alt="Google Pixel">
         <p>Google Pixel</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="oneplus">
         <img src="assets/oneplus.png" alt="OnePlus">
         <p>OnePlus</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="xiaomi">
         <img src="assets/xiaomi.png" alt="Xiaomi">
         <p>Xiaomi</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="oppo">
         <img src="assets/oppo.png" alt="Oppo">
         <p>Oppo</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="huawei">
         <img src="assets/huawei.png" alt="Huawei">
         <p>Huawei</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="motorola">
         <img src="assets/motorolla.png" alt="Motorola">
         <p>Motorola</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="sony">
         <img src="assets/sony.png" alt="Sony Xperia">
         <p>Sony Xperia</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="tecno">
         <img src="assets/tecno.png" alt="Tecno">
         <p>Tecno</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="infinix">
         <img src="assets/infinix.png" alt="Infinix">
         <p>Infinix</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="realme">
         <img src="assets/realme.png" alt="Realme">
         <p>Realme</p>
-      </div>
-      <div class="brand-card">
+      </button>
+      <button type="button" class="brand-card brand-trigger" data-brand="itel">
         <img src="assets/itel.png" alt="Itel">
         <p>Itel</p>
+      </button>
+    </div>
+
+    <div class="spares-modal" id="sparesModal" aria-hidden="true">
+      <div class="spares-modal-content" role="dialog" aria-modal="true" aria-labelledby="sparesModalTitle">
+        <button type="button" class="spares-modal-close" id="sparesModalClose" aria-label="Close spare parts popup">&times;</button>
+        <div class="catalog-header-row">
+          <h3 id="sparesModalTitle">Spare Parts Catalog</h3>
+          <button type="button" class="cart-pill cart-pill-button" id="cartToggle">Cart: <span id="cartCount">0</span></button>
+        </div>
+        <p class="spares-modal-subtitle" id="sparesModalSubtitle">Kenya-market models and spare parts</p>
+        <div class="catalog-notice" id="catalogNotice"></div>
+        <button type="button" class="catalog-back" id="catalogBack">&larr; Back to models</button>
+        <section class="cart-panel" id="cartPanel" aria-live="polite">
+          <div class="cart-panel-header">
+            <h4>Your Cart</h4>
+            <button type="button" class="catalog-back cart-close" id="cartClose">Close</button>
+          </div>
+          <div class="cart-items" id="cartItems"></div>
+          <div class="cart-summary">
+            <div>Total: <strong id="cartTotal">KES 0</strong></div>
+            <button type="button" class="buy-now cart-checkout" id="checkoutCartBtn">Checkout Cart</button>
+          </div>
+        </section>
+        <div class="model-catalog" id="modelCatalog"></div>
+        <div class="selected-model-panel" id="selectedModelPanel"></div>
+        <div class="component-catalog" id="componentCatalog"></div>
       </div>
-      <div class="brand-card">
-        <img src="assets/satellite phone.png" alt="Satellite Phone">
-        <p>Satellite Phone</p>
-      </div>
-      
     </div>
   </section>
 
@@ -257,5 +279,627 @@
   </div>
 
   <script src="chatbot.js"></script>
+  <script>
+    const brandTitles = {
+      apple: "Apple iPhone",
+      samsung: "Samsung Galaxy",
+      google: "Google Pixel",
+      oneplus: "OnePlus",
+      xiaomi: "Xiaomi",
+      oppo: "Oppo",
+      huawei: "Huawei",
+      motorola: "Motorola",
+      sony: "Sony Xperia",
+      tecno: "Tecno",
+      infinix: "Infinix",
+      realme: "Realme",
+      itel: "Itel"
+    };
+
+    const brandImages = {
+      apple: "assets/wholesale.jpg",
+      samsung: "assets/wholesale.jpg",
+      google: "assets/wholesale.jpg",
+      oneplus: "assets/wholesale.jpg",
+      xiaomi: "assets/wholesale.jpg",
+      oppo: "assets/wholesale.jpg",
+      huawei: "assets/wholesale.jpg",
+      motorola: "assets/wholesale.jpg",
+      sony: "assets/wholesale.jpg",
+      tecno: "assets/wholesale.jpg",
+      infinix: "assets/wholesale.jpg",
+      realme: "assets/wholesale.jpg",
+      itel: "assets/wholesale.jpg"
+    };
+
+    const tierPriceProfiles = {
+      budget: { screen: 2700, battery: 1400, charging: 850, camera: 1300, backCover: 1100 },
+      entry: { screen: 3200, battery: 1600, charging: 950, camera: 1500, backCover: 1300 },
+      mid: { screen: 5600, battery: 2400, charging: 1300, camera: 2800, backCover: 1900 },
+      premium: { screen: 9800, battery: 3900, charging: 2200, camera: 6200, backCover: 4200 },
+      flagship: { screen: 13200, battery: 4600, charging: 2600, camera: 7100, backCover: 4800 }
+    };
+
+    const brandCatalogs = {
+      apple: [
+        { name: "iPhone 11", modelNumber: "A2111", tier: "mid", image: "assets/iphone/iphone-11.jpg" },
+        { name: "iPhone 12", modelNumber: "A2172", tier: "mid", image: "assets/iphone/iphone-12.jpg" },
+        { name: "iPhone 13", modelNumber: "A2482", tier: "premium", image: "assets/iphone/iphone-13.jpg" },
+        { name: "iPhone 14", modelNumber: "A2649", tier: "premium", image: "assets/iphone/iphone-14.jpg" },
+        { name: "iPhone 15", modelNumber: "A2846", tier: "premium", image: "assets/iphone/iphone-15.jpg" },
+        { name: "iPhone 15 Pro", modelNumber: "A2848", tier: "flagship", image: "assets/iphone/iphone-15-pro.jpg" },
+        { name: "iPhone 15 Pro Max", modelNumber: "A2849", tier: "flagship", image: "assets/iphone/iphone-15-pro-max.jpg" },
+        { name: "iPhone 16", modelNumber: "A3081", tier: "flagship", image: "assets/iphone/iphone-16.jpg" },
+        { name: "iPhone 16 Plus", modelNumber: "A3090", tier: "flagship", image: "assets/iphone/iphone-16-plus.jpg" },
+        { name: "iPhone 16 Pro", modelNumber: "A3293", tier: "flagship", image: "assets/iphone/iphone-16-pro.jpg" }
+      ],
+      samsung: [
+        { name: "Galaxy A15 5G", modelNumber: "SM-A155", tier: "entry" },
+        { name: "Galaxy A25 5G", modelNumber: "SM-A256", tier: "entry" },
+        { name: "Galaxy A35 5G", modelNumber: "SM-A356", tier: "mid" },
+        { name: "Galaxy A55 5G", modelNumber: "SM-A556", tier: "mid" },
+        { name: "Galaxy S24", modelNumber: "SM-S921", tier: "flagship" },
+        { name: "Galaxy S24 Ultra", modelNumber: "SM-S928", tier: "flagship" },
+        { name: "Galaxy S25", modelNumber: "SM-S931", tier: "flagship" }
+      ],
+      google: [
+        { name: "Pixel 6a", modelNumber: "GX7AS", tier: "mid" },
+        { name: "Pixel 7a", modelNumber: "GHL1X", tier: "mid" },
+        { name: "Pixel 8a", modelNumber: "G6GPR", tier: "premium" },
+        { name: "Pixel 8", modelNumber: "G9BQD", tier: "premium" },
+        { name: "Pixel 8 Pro", modelNumber: "GC3VE", tier: "flagship" }
+      ],
+      oneplus: [
+        { name: "OnePlus 11", modelNumber: "CPH2449", tier: "premium" },
+        { name: "Nord CE 4", modelNumber: "CPH2613", tier: "mid" },
+        { name: "Nord 4", modelNumber: "CPH2663", tier: "mid" },
+        { name: "OnePlus 12", modelNumber: "CPH2581", tier: "flagship" },
+        { name: "OnePlus 12R", modelNumber: "CPH2585", tier: "flagship" }
+      ],
+      xiaomi: [
+        { name: "Redmi Note 13", modelNumber: "23129RA5FL", tier: "entry" },
+        { name: "Redmi Note 13 Pro 5G", modelNumber: "2312DRA50G", tier: "mid" },
+        { name: "Xiaomi 14", modelNumber: "23127PN0CG", tier: "premium" },
+        { name: "Xiaomi 14 Ultra", modelNumber: "24030PN60G", tier: "flagship" }
+      ],
+      oppo: [
+        { name: "OPPO A58", modelNumber: "CPH2577", tier: "entry" },
+        { name: "OPPO A79 5G", modelNumber: "CPH2557", tier: "entry" },
+        { name: "OPPO Reno11 5G", modelNumber: "CPH2599", tier: "premium" },
+        { name: "OPPO Reno12 5G", modelNumber: "CPH2625", tier: "premium" }
+      ],
+      huawei: [
+        { name: "HUAWEI nova 11", modelNumber: "GOA-LX9", tier: "mid" },
+        { name: "HUAWEI nova 12i", modelNumber: "CTR-LX1", tier: "mid" },
+        { name: "HUAWEI Pura 70", modelNumber: "ADY-LX9", tier: "premium" },
+        { name: "HUAWEI Pura 70 Pro", modelNumber: "HBN-LX9", tier: "flagship" }
+      ],
+      motorola: [
+        { name: "Moto G54 5G", modelNumber: "XT2343-3", tier: "entry" },
+        { name: "Moto G84 5G", modelNumber: "XT2347-2", tier: "mid" },
+        { name: "Motorola Edge 40", modelNumber: "XT2303-2", tier: "premium" },
+        { name: "Motorola Edge 50 Pro", modelNumber: "XT2403-4", tier: "premium" }
+      ],
+      sony: [
+        { name: "Xperia 10 V", modelNumber: "XQ-DC72", tier: "mid" },
+        { name: "Xperia 5 V", modelNumber: "XQ-DE72", tier: "premium" },
+        { name: "Xperia 1 VI", modelNumber: "XQ-EC72", tier: "flagship" }
+      ],
+      tecno: [
+        { name: "TECNO Spark 20", modelNumber: "KJ5", tier: "budget" },
+        { name: "TECNO Spark 20 Pro", modelNumber: "KJ6", tier: "budget" },
+        { name: "TECNO Camon 30", modelNumber: "CL6", tier: "mid" },
+        { name: "TECNO Camon 30 5G", modelNumber: "CL7", tier: "mid" }
+      ],
+      infinix: [
+        { name: "Infinix Smart 8", modelNumber: "X6525", tier: "budget" },
+        { name: "Infinix Note 40", modelNumber: "X6853", tier: "mid" },
+        { name: "Infinix Note 40 Pro", modelNumber: "X6850", tier: "mid" },
+        { name: "Infinix Zero 30", modelNumber: "X6731", tier: "premium" }
+      ],
+      realme: [
+        { name: "realme C67", modelNumber: "RMX3890", tier: "budget" },
+        { name: "realme C75", modelNumber: "RMX3941", tier: "budget" },
+        { name: "realme 12 Pro+", modelNumber: "RMX3840", tier: "premium" },
+        { name: "realme 13 Pro+", modelNumber: "RMX3921", tier: "premium" }
+      ],
+      itel: [
+        { name: "itel A70", modelNumber: "A665L", tier: "budget" },
+        { name: "itel S24", modelNumber: "P673L", tier: "budget" },
+        { name: "itel P55 5G", modelNumber: "A666LN", tier: "entry" },
+        { name: "itel P65", modelNumber: "P671L", tier: "entry" }
+      ]
+    };
+
+    const componentTemplates = [
+      { key: "screen", name: "Display Assembly", image: "assets/LCDS.png" },
+      { key: "battery", name: "Battery", image: "assets/BATTERRY.png" },
+      { key: "charging", name: "Charging Port", image: "assets/CHARGING PLATE.png" },
+      { key: "camera", name: "Camera Module", image: "assets/MOUTHPIECE.png" },
+      { key: "backCover", name: "Back Housing", image: "assets/CHASIS.png" }
+    ];
+
+    const modelSpecs = {
+      A2111: { display: "6.1-inch Liquid Retina", chip: "A13 Bionic", battery: "3110 mAh", camera: "12MP dual" },
+      A2172: { display: "6.1-inch Super Retina XDR", chip: "A14 Bionic", battery: "2815 mAh", camera: "12MP dual" },
+      A2482: { display: "6.1-inch Super Retina XDR", chip: "A15 Bionic", battery: "3240 mAh", camera: "12MP dual" },
+      A2649: { display: "6.1-inch Super Retina XDR", chip: "A15 Bionic", battery: "3279 mAh", camera: "12MP dual" },
+      A2846: { display: "6.1-inch Super Retina XDR", chip: "A16 Bionic", battery: "3349 mAh", camera: "48MP dual" },
+      A2848: { display: "6.1-inch ProMotion OLED", chip: "A17 Pro", battery: "3274 mAh", camera: "48MP triple" },
+      A2849: { display: "6.7-inch ProMotion OLED", chip: "A17 Pro", battery: "4422 mAh", camera: "48MP triple" },
+      A3081: { display: "6.1-inch OLED", chip: "A18", battery: "3561 mAh", camera: "48MP dual" },
+      A3090: { display: "6.7-inch OLED", chip: "A18", battery: "4674 mAh", camera: "48MP dual" },
+      A3293: { display: "6.3-inch ProMotion OLED", chip: "A18 Pro", battery: "3582 mAh", camera: "48MP triple" },
+      "SM-A155": { display: "6.5-inch Super AMOLED", chip: "Dimensity 6100+", battery: "5000 mAh", camera: "50MP main" },
+      "SM-A256": { display: "6.5-inch Super AMOLED", chip: "Exynos 1280", battery: "5000 mAh", camera: "50MP main" },
+      "SM-A356": { display: "6.6-inch Super AMOLED", chip: "Exynos 1380", battery: "5000 mAh", camera: "50MP main" },
+      "SM-A556": { display: "6.6-inch Super AMOLED", chip: "Exynos 1480", battery: "5000 mAh", camera: "50MP main" },
+      "SM-S921": { display: "6.2-inch Dynamic AMOLED", chip: "Snapdragon 8 Gen 3", battery: "4000 mAh", camera: "50MP triple" },
+      "SM-S928": { display: "6.8-inch Dynamic AMOLED", chip: "Snapdragon 8 Gen 3", battery: "5000 mAh", camera: "200MP quad" },
+      "SM-S931": { display: "6.2-inch Dynamic AMOLED", chip: "Snapdragon 8 Elite", battery: "4000 mAh", camera: "50MP triple" },
+      GX7AS: { display: "6.1-inch OLED 60Hz", chip: "Google Tensor", battery: "4410 mAh", camera: "12MP dual" },
+      GHL1X: { display: "6.1-inch OLED 90Hz", chip: "Google Tensor G2", battery: "4385 mAh", camera: "64MP dual" },
+      G6GPR: { display: "6.1-inch OLED 120Hz", chip: "Google Tensor G3", battery: "4492 mAh", camera: "64MP dual" },
+      G9BQD: { display: "6.2-inch OLED 120Hz", chip: "Google Tensor G3", battery: "4575 mAh", camera: "50MP dual" },
+      GC3VE: { display: "6.7-inch OLED 120Hz", chip: "Google Tensor G3", battery: "5050 mAh", camera: "50MP triple" },
+      CPH2449: { display: "6.7-inch AMOLED 120Hz", chip: "Snapdragon 8 Gen 2", battery: "5000 mAh", camera: "50MP triple" },
+      CPH2613: { display: "6.7-inch AMOLED 120Hz", chip: "Snapdragon 7 Gen 3", battery: "5500 mAh", camera: "50MP dual" },
+      CPH2663: { display: "6.74-inch AMOLED 120Hz", chip: "Snapdragon 7+ Gen 3", battery: "5500 mAh", camera: "50MP dual" },
+      CPH2581: { display: "6.82-inch LTPO AMOLED", chip: "Snapdragon 8 Gen 3", battery: "5400 mAh", camera: "50MP triple" },
+      CPH2585: { display: "6.78-inch LTPO AMOLED", chip: "Snapdragon 8 Gen 2", battery: "5500 mAh", camera: "50MP triple" },
+      "23129RA5FL": { display: "6.67-inch AMOLED 120Hz", chip: "Snapdragon 685", battery: "5000 mAh", camera: "108MP main" },
+      "2312DRA50G": { display: "6.67-inch AMOLED 120Hz", chip: "Snapdragon 7s Gen 2", battery: "5100 mAh", camera: "200MP main" },
+      "23127PN0CG": { display: "6.36-inch LTPO AMOLED", chip: "Snapdragon 8 Gen 3", battery: "4610 mAh", camera: "50MP triple" },
+      "24030PN60G": { display: "6.73-inch LTPO AMOLED", chip: "Snapdragon 8 Gen 3", battery: "5000 mAh", camera: "50MP quad" },
+      CPH2577: { display: "6.72-inch FHD+ 60Hz", chip: "Helio G85", battery: "5000 mAh", camera: "50MP main" },
+      CPH2557: { display: "6.72-inch FHD+ 90Hz", chip: "Dimensity 6020", battery: "5000 mAh", camera: "50MP main" },
+      CPH2599: { display: "6.7-inch AMOLED 120Hz", chip: "Dimensity 7050", battery: "5000 mAh", camera: "50MP dual" },
+      CPH2625: { display: "6.7-inch AMOLED 120Hz", chip: "Dimensity 7300", battery: "5000 mAh", camera: "50MP dual" },
+      "GOA-LX9": { display: "6.7-inch OLED 120Hz", chip: "Snapdragon 778G", battery: "4500 mAh", camera: "50MP dual" },
+      "CTR-LX1": { display: "6.7-inch LCD 90Hz", chip: "Snapdragon 680", battery: "5000 mAh", camera: "108MP main" },
+      "ADY-LX9": { display: "6.6-inch OLED 120Hz", chip: "Kirin series", battery: "4900 mAh", camera: "50MP dual" },
+      "HBN-LX9": { display: "6.8-inch OLED 120Hz", chip: "Kirin series", battery: "5050 mAh", camera: "50MP triple" },
+      "XT2343-3": { display: "6.5-inch IPS 120Hz", chip: "Dimensity 7020", battery: "5000 mAh", camera: "50MP dual" },
+      "XT2347-2": { display: "6.5-inch pOLED 120Hz", chip: "Snapdragon 695", battery: "5000 mAh", camera: "50MP dual" },
+      "XT2303-2": { display: "6.55-inch pOLED 144Hz", chip: "Dimensity 8020", battery: "4400 mAh", camera: "50MP dual" },
+      "XT2403-4": { display: "6.7-inch pOLED 144Hz", chip: "Snapdragon 7 Gen 3", battery: "4500 mAh", camera: "50MP triple" },
+      "XQ-DC72": { display: "6.1-inch OLED", chip: "Snapdragon 695", battery: "5000 mAh", camera: "48MP triple" },
+      "XQ-DE72": { display: "6.1-inch OLED 120Hz", chip: "Snapdragon 8 Gen 2", battery: "5000 mAh", camera: "48MP dual" },
+      "XQ-EC72": { display: "6.5-inch OLED 120Hz", chip: "Snapdragon 8 Gen 3", battery: "5000 mAh", camera: "48MP triple" },
+      KJ5: { display: "6.6-inch IPS 90Hz", chip: "Helio G85", battery: "5000 mAh", camera: "50MP dual" },
+      KJ6: { display: "6.78-inch IPS 120Hz", chip: "Helio G99", battery: "5000 mAh", camera: "108MP main" },
+      CL6: { display: "6.78-inch AMOLED 120Hz", chip: "Helio G99", battery: "5000 mAh", camera: "50MP dual" },
+      CL7: { display: "6.78-inch AMOLED 120Hz", chip: "Dimensity 7020", battery: "5000 mAh", camera: "50MP dual" },
+      X6525: { display: "6.6-inch IPS 90Hz", chip: "Unisoc T606", battery: "5000 mAh", camera: "50MP dual" },
+      X6853: { display: "6.78-inch AMOLED 120Hz", chip: "Helio G99", battery: "5000 mAh", camera: "108MP main" },
+      X6850: { display: "6.78-inch AMOLED 120Hz", chip: "Helio G99", battery: "5000 mAh", camera: "108MP main" },
+      X6731: { display: "6.78-inch AMOLED 144Hz", chip: "Dimensity 8020", battery: "5000 mAh", camera: "108MP dual" },
+      RMX3890: { display: "6.72-inch IPS 90Hz", chip: "Snapdragon 685", battery: "5000 mAh", camera: "108MP main" },
+      RMX3941: { display: "6.72-inch IPS 90Hz", chip: "Helio G92 Max", battery: "5828 mAh", camera: "50MP dual" },
+      RMX3840: { display: "6.7-inch AMOLED 120Hz", chip: "Snapdragon 7s Gen 2", battery: "5000 mAh", camera: "50MP triple" },
+      RMX3921: { display: "6.7-inch AMOLED 120Hz", chip: "Snapdragon 7s Gen 3", battery: "5200 mAh", camera: "50MP triple" },
+      A665L: { display: "6.6-inch IPS 60Hz", chip: "Unisoc T603", battery: "5000 mAh", camera: "13MP dual" },
+      P673L: { display: "6.6-inch IPS 90Hz", chip: "Helio G91", battery: "5000 mAh", camera: "108MP main" },
+      A666LN: { display: "6.6-inch IPS 90Hz", chip: "Dimensity 6080", battery: "5000 mAh", camera: "50MP dual" },
+      P671L: { display: "6.7-inch IPS 120Hz", chip: "Unisoc T615", battery: "5000 mAh", camera: "50MP dual" }
+    };
+
+    const API_BASE = "http://localhost:4000/api";
+    const CART_STORAGE_KEY = "mobimend_wholesale_cart";
+    const modal = document.getElementById("sparesModal");
+    const modalTitle = document.getElementById("sparesModalTitle");
+    const modalSubtitle = document.getElementById("sparesModalSubtitle");
+    const catalogNotice = document.getElementById("catalogNotice");
+    const cartCount = document.getElementById("cartCount");
+    const cartToggle = document.getElementById("cartToggle");
+    const cartPanel = document.getElementById("cartPanel");
+    const cartItemsContainer = document.getElementById("cartItems");
+    const cartTotal = document.getElementById("cartTotal");
+    const cartClose = document.getElementById("cartClose");
+    const checkoutCartBtn = document.getElementById("checkoutCartBtn");
+    const backBtn = document.getElementById("catalogBack");
+    const modelCatalog = document.getElementById("modelCatalog");
+    const selectedModelPanel = document.getElementById("selectedModelPanel");
+    const componentCatalog = document.getElementById("componentCatalog");
+    const closeBtn = document.getElementById("sparesModalClose");
+    const triggers = document.querySelectorAll(".brand-trigger");
+
+    let activeBrand = "";
+    let activeModel = null;
+    let inventoryItems = [];
+    let cartItems = loadCart();
+
+    function formatKes(value) {
+      return "KES " + Math.round(value).toLocaleString();
+    }
+
+    function normalize(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    function saveCart() {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    }
+
+    function loadCart() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || "[]");
+        return Array.isArray(stored) ? stored : [];
+      } catch (_error) {
+        return [];
+      }
+    }
+
+    function updateCartCount() {
+      const totalItems = cartItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      cartCount.textContent = totalItems;
+    }
+
+    function showNotice(message, tone = "info") {
+      catalogNotice.textContent = message;
+      catalogNotice.className = `catalog-notice ${tone} active`;
+    }
+
+    function clearNotice() {
+      catalogNotice.textContent = "";
+      catalogNotice.className = "catalog-notice";
+    }
+
+    function imageForPart(partType) {
+      const part = componentTemplates.find((entry) =>
+        normalize(entry.key) === normalize(partType) || normalize(entry.name) === normalize(partType)
+      );
+      return part ? part.image : componentTemplates[0].image;
+    }
+
+    function partLabelFromInventory(partType) {
+      const part = componentTemplates.find((entry) =>
+        normalize(entry.key) === normalize(partType) || normalize(entry.name) === normalize(partType)
+      );
+      return part ? part.name : partType;
+    }
+
+    function findInventoryForModel(model) {
+      const activeBrandTitle = brandTitles[activeBrand] || activeBrand;
+      return inventoryItems
+        .filter((item) =>
+          (
+            normalize(item.brand) === normalize(activeBrand)
+            || normalize(item.brand) === normalize(activeBrandTitle)
+          )
+          && normalize(item.model) === normalize(model.name)
+        )
+        .sort((a, b) => normalize(a.partType).localeCompare(normalize(b.partType)));
+    }
+
+    function renderModels(brandKey) {
+      const models = brandCatalogs[brandKey] || [];
+      modelCatalog.innerHTML = "";
+
+      if (!models.length) {
+        modelCatalog.innerHTML = "<p>No models configured for this brand yet.</p>";
+        return;
+      }
+
+      models.forEach((model) => {
+        const card = document.createElement("article");
+        card.className = "phone-model-card";
+        const imagePath = model.image || brandImages[brandKey];
+        card.innerHTML = `
+          <img src="${imagePath}" alt="${model.name}">
+          <h4>${model.name}</h4>
+          <p class="model-meta">${model.modelNumber}</p>
+          <button type="button" class="open-components" data-model="${model.modelNumber}">View Components</button>
+        `;
+        modelCatalog.appendChild(card);
+      });
+    }
+
+    function renderComponents(model) {
+      componentCatalog.innerHTML = "";
+      const modelInventory = findInventoryForModel(model);
+
+      if (!modelInventory.length) {
+        componentCatalog.innerHTML = `
+          <div class="inventory-empty-state">
+            <h5>No inventory listed yet</h5>
+            <p>Add ${model.name} parts in the inventory admin page and they will appear here automatically.</p>
+          </div>
+        `;
+        return;
+      }
+
+      modelInventory.forEach((item) => {
+        const isOutOfStock = Number(item.quantity || 0) <= 0;
+        const card = document.createElement("article");
+        card.className = "component-card";
+        card.innerHTML = `
+          <img src="${imageForPart(item.partType)}" alt="${partLabelFromInventory(item.partType)} for ${model.name}">
+          <div class="component-info">
+            <h5>${partLabelFromInventory(item.partType)}</h5>
+            <p>${model.name} (${model.modelNumber})</p>
+            <p>Available: ${item.quantity}</p>
+            <p class="component-price">${formatKes(item.sellPrice || 0)}</p>
+          </div>
+          <div class="component-actions">
+            <button type="button" class="buy-now" data-action="buy-now" data-id="${item._id}" ${isOutOfStock ? "disabled" : ""}>Buy Now</button>
+            <button type="button" class="add-to-cart" data-action="add-to-cart" data-id="${item._id}" ${isOutOfStock ? "disabled" : ""}>Add to Cart</button>
+          </div>
+        `;
+        componentCatalog.appendChild(card);
+      });
+    }
+
+    function renderModelDetails(model) {
+      const specs = modelSpecs[model.modelNumber] || {
+        display: "6.5-inch display",
+        chip: "Octa-core chipset",
+        battery: "5000 mAh",
+        camera: "Dual/Triple camera"
+      };
+      const imagePath = model.image || brandImages[activeBrand];
+      selectedModelPanel.innerHTML = `
+        <div class="selected-model-image-wrap">
+          <img src="${imagePath}" alt="${model.name}">
+        </div>
+        <div class="selected-model-info">
+          <h4>${model.name}</h4>
+          <p class="selected-model-number">Model: ${model.modelNumber}</p>
+          <div class="spec-tags">
+            <span>Display: ${specs.display}</span>
+            <span>Chip: ${specs.chip}</span>
+            <span>Battery: ${specs.battery}</span>
+            <span>Camera: ${specs.camera}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCart() {
+      updateCartCount();
+      cartItemsContainer.innerHTML = "";
+
+      if (!cartItems.length) {
+        cartItemsContainer.innerHTML = "<p class=\"cart-empty\">Your cart is empty.</p>";
+        cartTotal.textContent = formatKes(0);
+        checkoutCartBtn.disabled = true;
+        return;
+      }
+
+      let total = 0;
+      checkoutCartBtn.disabled = false;
+
+      cartItems.forEach((item) => {
+        total += Number(item.sellPrice || 0) * Number(item.quantity || 0);
+        const row = document.createElement("article");
+        row.className = "cart-line-item";
+        row.innerHTML = `
+          <div>
+            <h5>${item.model}</h5>
+            <p>${item.partType}</p>
+            <p>${formatKes(item.sellPrice)} each</p>
+          </div>
+          <div class="cart-line-actions">
+            <span class="cart-qty">Qty: ${item.quantity}</span>
+            <button type="button" class="add-to-cart cart-remove" data-id="${item.inventoryId}">Remove</button>
+          </div>
+        `;
+        cartItemsContainer.appendChild(row);
+      });
+
+      cartTotal.textContent = formatKes(total);
+    }
+
+    function showModelView() {
+      backBtn.style.display = "none";
+      modelCatalog.style.display = "grid";
+      selectedModelPanel.style.display = "none";
+      componentCatalog.style.display = "none";
+      activeModel = null;
+      clearNotice();
+    }
+
+    function showComponentView(model) {
+      activeModel = model;
+      modalSubtitle.textContent = `${model.name} parts catalog - inventory and pricing are loaded from the backend`;
+      renderModelDetails(model);
+      renderComponents(model);
+      backBtn.style.display = "inline-flex";
+      modelCatalog.style.display = "none";
+      selectedModelPanel.style.display = "grid";
+      componentCatalog.style.display = "grid";
+    }
+
+    function toggleCart(forceState) {
+      const nextState = typeof forceState === "boolean" ? forceState : !cartPanel.classList.contains("active");
+      cartPanel.classList.toggle("active", nextState);
+    }
+
+    function addToCart(item) {
+      if (Number(item.quantity || 0) <= 0) {
+        showNotice(`${partLabelFromInventory(item.partType)} is out of stock.`, "error");
+        return;
+      }
+
+      const existingItem = cartItems.find((cartItem) => cartItem.inventoryId === item._id);
+      if (existingItem) {
+        if (existingItem.quantity >= item.quantity) {
+          showNotice(`Only ${item.quantity} units are available for ${partLabelFromInventory(item.partType)}.`, "error");
+          return;
+        }
+        existingItem.quantity += 1;
+      } else {
+        cartItems.push({
+          inventoryId: item._id,
+          brand: item.brand,
+          model: item.model,
+          partType: partLabelFromInventory(item.partType),
+          sellPrice: Number(item.sellPrice || 0),
+          quantity: 1
+        });
+      }
+
+      saveCart();
+      renderCart();
+      showNotice(`${partLabelFromInventory(item.partType)} added to cart.`, "success");
+    }
+
+    function removeFromCart(inventoryId) {
+      cartItems = cartItems.filter((item) => item.inventoryId !== inventoryId);
+      saveCart();
+      renderCart();
+    }
+
+    async function loadInventory() {
+      try {
+        const res = await fetch(`${API_BASE}/inventory?inStock=true`);
+        if (!res.ok) {
+          throw new Error("Failed to load inventory");
+        }
+        inventoryItems = await res.json();
+      } catch (_error) {
+        inventoryItems = [];
+        showNotice("Inventory could not be loaded. Please confirm the backend is running on port 4000.", "error");
+      }
+    }
+
+    async function checkoutItems(items, successMessage) {
+      const res = await fetch(`${API_BASE}/inventory/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const firstIssue = Array.isArray(data.issues) ? data.issues[0] : null;
+        throw new Error(firstIssue?.error || data.error || "Checkout failed");
+      }
+
+      data.items.forEach((updatedItem) => {
+        const index = inventoryItems.findIndex((item) => item._id === updatedItem._id);
+        if (index >= 0) {
+          inventoryItems[index] = updatedItem;
+        }
+      });
+
+      if (activeModel) {
+        renderComponents(activeModel);
+      }
+
+      showNotice(successMessage, "success");
+    }
+
+    async function openModal(brandKey) {
+      activeBrand = brandKey;
+      modalTitle.textContent = `${brandTitles[brandKey]} Models`;
+      modalSubtitle.textContent = brandKey === "apple"
+        ? "Select an iPhone model, then pick spare components with pricing."
+        : "Select a model, then pick spare components with pricing.";
+      await loadInventory();
+      renderModels(brandKey);
+      renderCart();
+      toggleCart(false);
+      showModelView();
+      modal.classList.add("active");
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeModal() {
+      modal.classList.remove("active");
+      modal.setAttribute("aria-hidden", "true");
+      toggleCart(false);
+    }
+
+    modelCatalog.addEventListener("click", (event) => {
+      const btn = event.target.closest(".open-components");
+      if (!btn) return;
+      const modelCode = btn.dataset.model;
+      const model = (brandCatalogs[activeBrand] || []).find((item) => item.modelNumber === modelCode);
+      if (model) showComponentView(model);
+    });
+
+    componentCatalog.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-id]");
+      if (!button) return;
+
+      const item = inventoryItems.find((inventoryItem) => inventoryItem._id === button.dataset.id);
+      if (!item) return;
+
+      if (button.dataset.action === "add-to-cart") {
+        addToCart(item);
+        return;
+      }
+
+      if (button.dataset.action === "buy-now") {
+        try {
+          button.disabled = true;
+          await checkoutItems(
+            [{ inventoryId: item._id, quantity: 1 }],
+            `${partLabelFromInventory(item.partType)} purchased successfully.`
+          );
+        } catch (error) {
+          showNotice(error.message, "error");
+        } finally {
+          button.disabled = false;
+        }
+      }
+    });
+
+    cartItemsContainer.addEventListener("click", (event) => {
+      const removeButton = event.target.closest(".cart-remove");
+      if (!removeButton) return;
+      removeFromCart(removeButton.dataset.id);
+    });
+
+    checkoutCartBtn.addEventListener("click", async () => {
+      if (!cartItems.length) return;
+
+      try {
+        checkoutCartBtn.disabled = true;
+        await checkoutItems(
+          cartItems.map((item) => ({
+            inventoryId: item.inventoryId,
+            quantity: item.quantity
+          })),
+          "Cart checkout completed successfully."
+        );
+        cartItems = [];
+        saveCart();
+        renderCart();
+        toggleCart(false);
+      } catch (error) {
+        showNotice(error.message, "error");
+      } finally {
+        checkoutCartBtn.disabled = false;
+      }
+    });
+
+    backBtn.addEventListener("click", () => {
+      modalSubtitle.textContent = activeBrand === "apple"
+        ? "Select an iPhone model, then pick spare components with pricing."
+        : "Select a model, then pick spare components with pricing.";
+      showModelView();
+    });
+
+    triggers.forEach((button) => {
+      button.addEventListener("click", () => openModal(button.dataset.brand));
+    });
+
+    cartToggle.addEventListener("click", () => {
+      renderCart();
+      toggleCart();
+    });
+    cartClose.addEventListener("click", () => toggleCart(false));
+    closeBtn.addEventListener("click", closeModal);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && modal.classList.contains("active")) closeModal();
+    });
+
+    renderCart();
+  </script>
 </body>
 </html>

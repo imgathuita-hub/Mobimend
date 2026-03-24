@@ -9,42 +9,55 @@
     body {
       margin: 0;
       font-family: 'Roboto', sans-serif;
-      background: #f6f7fb;
+      background: linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #ffffff 100%);
       color: #1f2933;
     }
     header {
-      background: #1766c5;
+      background: linear-gradient(135deg, #0f4aa1, #1766c5 55%, #3b82f6);
       color: #fff;
-      padding: 20px;
+      padding: 24px 20px;
+      box-shadow: 0 14px 34px rgba(23, 102, 197, 0.2);
     }
     header h1 { margin: 0; font-family: 'Montserrat', sans-serif; }
-    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .container { max-width: 1120px; margin: 28px auto; padding: 0 16px; }
     .card {
       background: #fff;
-      border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 16px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 18px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.18);
     }
     .row { display: flex; flex-wrap: wrap; gap: 12px; }
     .row input, .row select, .row textarea {
-      padding: 10px;
-      border-radius: 8px;
+      padding: 12px 13px;
+      border-radius: 12px;
       border: 1px solid #d7dbe3;
       flex: 1;
       min-width: 180px;
+      font: inherit;
+      background: #fbfdff;
     }
     button {
       background: #1766c5;
       color: #fff;
       border: none;
-      padding: 10px 14px;
-      border-radius: 8px;
+      padding: 11px 16px;
+      border-radius: 12px;
       cursor: pointer;
       font-weight: 600;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(23, 102, 197, 0.18);
     }
     button.secondary {
       background: #6b7280;
+    }
+    button.ghost {
+      background: #e8f0fe;
+      color: #0f4aa1;
     }
     table {
       width: 100%;
@@ -59,96 +72,1076 @@
     th { background: #f1f5f9; font-weight: 700; }
     .small { font-size: 0.9rem; color: #556070; }
     .actions button { margin-right: 6px; }
-    .token-box { font-family: monospace; word-break: break-all; }
+    .hero-copy {
+      margin-top: 8px;
+      max-width: 720px;
+      color: rgba(255,255,255,0.88);
+    }
+    .login-shell {
+      min-height: calc(100vh - 120px);
+      display: grid;
+      place-items: center;
+    }
+    .login-card {
+      width: min(460px, 100%);
+      padding: 28px;
+    }
+    .login-card h3 {
+      margin: 0 0 10px;
+      font-size: 1.45rem;
+      font-family: 'Montserrat', sans-serif;
+    }
+    .login-card p {
+      margin: 0 0 18px;
+      color: #556070;
+      line-height: 1.5;
+    }
+    .login-stack {
+      display: grid;
+      gap: 12px;
+    }
+    .login-stack input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .page-state {
+      display: none;
+    }
+    .page-state.active {
+      display: block;
+    }
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .dashboard-title h2 {
+      margin: 0;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.5rem;
+      color: #0f172a;
+    }
+    .dashboard-title p {
+      margin: 6px 0 0;
+      color: #556070;
+    }
+    .status-banner {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+    .status-banner.active {
+      display: block;
+    }
+    .status-banner.info {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+    .status-banner.success {
+      background: #ecfdf5;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+    .status-banner.error {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+    .split-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.25fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .card h3 {
+      margin-top: 0;
+      margin-bottom: 14px;
+      font-family: 'Montserrat', sans-serif;
+      color: #0f172a;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 18px;
+    }
+    .module-nav {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .module-tab {
+      text-align: left;
+      background: #fff;
+      color: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+    }
+    .module-tab.active {
+      background: linear-gradient(135deg, #0f4aa1, #1766c5 55%, #3b82f6);
+      color: #fff;
+      border-color: transparent;
+    }
+    .module-tab span,
+    .module-tab strong {
+      display: block;
+    }
+    .module-tab span {
+      font-size: 0.82rem;
+      opacity: 0.82;
+      margin-bottom: 4px;
+    }
+    .module-tab strong {
+      font-size: 1rem;
+      font-family: 'Montserrat', sans-serif;
+      margin-bottom: 4px;
+    }
+    .module-tab small {
+      display: block;
+      line-height: 1.45;
+      color: inherit;
+      opacity: 0.86;
+    }
+    .workspace-section {
+      display: none;
+      margin-bottom: 18px;
+    }
+    .workspace-section.active {
+      display: block;
+    }
+    .operations-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .ops-stat {
+      border: 1px solid #dbeafe;
+      border-radius: 16px;
+      padding: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .ops-stat span {
+      display: block;
+      margin-bottom: 8px;
+      color: #556070;
+      font-size: 0.9rem;
+    }
+    .ops-stat strong {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.5rem;
+      color: #0f172a;
+    }
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .product-card {
+      border: 1px solid #dbeafe;
+      border-radius: 18px;
+      padding: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .product-card h4 {
+      margin: 0 0 6px;
+      font-family: 'Montserrat', sans-serif;
+      color: #0f172a;
+    }
+    .product-card p {
+      margin: 0 0 8px;
+      color: #556070;
+      line-height: 1.45;
+    }
+    .product-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .product-meta span {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .metric-card {
+      border: 1px solid #dbeafe;
+      border-radius: 16px;
+      padding: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .metric-card span {
+      display: block;
+      margin-bottom: 8px;
+      color: #556070;
+      font-size: 0.9rem;
+    }
+    .metric-card strong {
+      display: block;
+      font-size: 1.55rem;
+      font-family: 'Montserrat', sans-serif;
+      color: #0f172a;
+    }
+    .metric-card small {
+      display: block;
+      margin-top: 8px;
+      color: #64748b;
+      line-height: 1.45;
+    }
+    .metric-card.positive strong {
+      color: #15803d;
+    }
+    .metric-card.negative strong {
+      color: #b91c1c;
+    }
+    .chart-shell {
+      display: grid;
+      gap: 14px;
+    }
+    .chart-stage {
+      min-height: 240px;
+      display: flex;
+      align-items: end;
+      justify-content: stretch;
+      gap: 12px;
+      padding: 12px 8px 8px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
+      border: 1px solid #dbeafe;
+    }
+    .chart-bar-group {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: end;
+      align-items: center;
+      gap: 10px;
+    }
+    .chart-bar {
+      width: min(56px, 100%);
+      min-height: 6px;
+      border-radius: 14px 14px 6px 6px;
+      background: linear-gradient(180deg, #3b82f6 0%, #1766c5 100%);
+      box-shadow: 0 12px 24px rgba(23, 102, 197, 0.18);
+    }
+    .chart-bar-label {
+      font-size: 0.8rem;
+      color: #556070;
+      text-align: center;
+    }
+    .chart-bar-value {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #0f4aa1;
+      text-align: center;
+    }
+    .chart-empty {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      min-height: 200px;
+      color: #64748b;
+      text-align: center;
+      padding: 0 14px;
+    }
+    @media (max-width: 900px) {
+      .module-nav,
+      .analytics-grid,
+      .split-grid {
+        grid-template-columns: 1fr;
+      }
+      .operations-grid,
+      .products-grid {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .metrics-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Mobimend Inventory Admin</h1>
-    <div class="small">Login, then manage inventory items</div>
+    <div class="hero-copy">Secure inventory workspace for your team. Sign in first, then add, update, and manage inventory items from one place.</div>
   </header>
 
-  <div class="container">
-    <div class="card">
-      <h3>Admin Login</h3>
-      <div class="row">
-        <input id="email" type="email" placeholder="Email">
-        <input id="password" type="password" placeholder="Password">
-        <button id="loginBtn">Login</button>
+  <div class="container page-state active" id="loginView">
+    <div class="login-shell">
+      <div class="card login-card">
+        <h3>Admin Login</h3>
+        <p>Only authenticated admins can access inventory creation, updates, and item management.</p>
+        <div class="status-banner" id="loginStatus"></div>
+        <div class="login-stack">
+          <input id="email" type="email" placeholder="Email">
+          <input id="password" type="password" placeholder="Password">
+          <button id="loginBtn">Login</button>
+        </div>
       </div>
-      <div class="row" style="margin-top:10px;">
-        <input id="tokenInput" type="text" placeholder="Paste token here if you already have one">
-        <button id="saveTokenBtn" class="secondary">Save Token</button>
+    </div>
+  </div>
+
+  <div class="container page-state" id="dashboardView">
+    <div class="dashboard-header">
+      <div class="dashboard-title">
+        <h2>Inventory Dashboard</h2>
+        <p>Manage spare parts stock, pricing, and inventory records after login.</p>
       </div>
-      <div class="small" style="margin-top:8px;">Current token:</div>
-      <div id="tokenDisplay" class="token-box small">Not set</div>
+      <button id="logoutBtn" class="ghost">Logout</button>
+    </div>
+    <div class="status-banner" id="dashboardStatus"></div>
+    <div class="module-nav">
+      <button type="button" class="module-tab active" data-section="inventory">
+        <span>Overview</span>
+        <strong>Inventory</strong>
+        <small>Manage stock records, quantities, pricing, and edits.</small>
+      </button>
+      <button type="button" class="module-tab" data-section="operations">
+        <span>Flow</span>
+        <strong>Operations</strong>
+        <small>Monitor stock health, restock alerts, and operational load.</small>
+      </button>
+      <button type="button" class="module-tab" data-section="products">
+        <span>Catalog</span>
+        <strong>Products</strong>
+        <small>Browse phone spare-parts grouped by brand and model.</small>
+      </button>
+      <button type="button" class="module-tab" data-section="reporting">
+        <span>Insights</span>
+        <strong>Reporting</strong>
+        <small>Track monthly profit, revenue, and sales progress.</small>
+      </button>
     </div>
 
-    <div class="card">
-      <h3>Add / Update Inventory</h3>
-      <div class="row">
-        <input id="brand" type="text" placeholder="Brand">
-        <input id="model" type="text" placeholder="Model">
-        <input id="partType" type="text" placeholder="Part Type">
-        <input id="quantity" type="number" placeholder="Quantity">
+    <div class="workspace-section" id="section-reporting">
+      <div class="analytics-grid">
+      <div class="card">
+        <div class="dashboard-header" style="margin-bottom:12px;">
+          <div>
+            <h3 style="margin-bottom:4px;">Monthly Profit & Loss</h3>
+            <div class="small" id="monthLabel">Current month inventory summary</div>
+          </div>
+          <div class="pill">Live Snapshot</div>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span>Items Added This Month</span>
+            <strong id="metricItemsAdded">0</strong>
+            <small>Number of inventory records created in the current month.</small>
+          </div>
+          <div class="metric-card">
+            <span>Stock Added Cost</span>
+            <strong id="metricStockCost">KES 0</strong>
+            <small>Total buy-value of inventory added this month.</small>
+          </div>
+          <div class="metric-card">
+            <span>Realized Revenue</span>
+            <strong id="metricRevenue">KES 0</strong>
+            <small>Total potential sales value from this month’s added inventory.</small>
+          </div>
+          <div class="metric-card" id="netMetricCard">
+            <span>Net Profit / Loss</span>
+            <strong id="metricNet">KES 0</strong>
+            <small id="metricNetCaption">Based on completed sales recorded this month.</small>
+          </div>
+        </div>
       </div>
-      <div class="row" style="margin-top:10px;">
-        <input id="buyPrice" type="number" placeholder="Buy Price">
-        <input id="sellPrice" type="number" placeholder="Sell Price">
-        <input id="status" type="text" placeholder="Status (in_stock)">
-        <input id="notes" type="text" placeholder="Notes">
+
+      <div class="card">
+        <div class="dashboard-header" style="margin-bottom:12px;">
+          <div>
+            <h3 style="margin-bottom:4px;">Progress Chart</h3>
+            <div class="small">Weekly sales quantity and realized revenue for this month.</div>
+          </div>
+          <div class="pill">Month View</div>
+        </div>
+        <div class="chart-shell">
+          <div class="chart-stage" id="progressChart"></div>
+          <div class="small" id="chartCaption">No recorded sales for this month yet.</div>
+        </div>
       </div>
-      <div class="row" style="margin-top:10px;">
-        <button id="createBtn">Create</button>
-        <button id="updateBtn" class="secondary">Update Selected</button>
-        <button id="clearBtn" class="secondary">Clear Form</button>
       </div>
-      <div class="small" id="selectedId" style="margin-top:8px;">Selected: none</div>
     </div>
 
-    <div class="card">
-      <h3>Inventory Items</h3>
-      <button id="refreshBtn">Refresh</button>
-      <table style="margin-top:12px;">
-        <thead>
-          <tr>
-            <th>Brand</th>
-            <th>Model</th>
-            <th>Part</th>
-            <th>Qty</th>
-            <th>Buy</th>
-            <th>Sell</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="inventoryBody"></tbody>
-      </table>
+    <div class="workspace-section active" id="section-inventory">
+      <div class="split-grid">
+      <div class="card">
+        <div class="pill">Authenticated Session</div>
+        <h3 style="margin-top:14px;">Add / Update Inventory</h3>
+        <div class="row">
+          <select id="brand">
+            <option value="">Select Brand</option>
+          </select>
+          <select id="model">
+            <option value="">Select Model</option>
+          </select>
+          <select id="partType">
+            <option value="">Select Part Type</option>
+          </select>
+          <input id="quantity" type="number" placeholder="Quantity">
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <input id="buyPrice" type="number" placeholder="Buy Price">
+          <input id="sellPrice" type="number" placeholder="Sell Price">
+          <select id="status">
+            <option value="yes">Yes - In Stock</option>
+            <option value="no">No - Out of Stock</option>
+          </select>
+          <input id="notes" type="text" placeholder="Notes">
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="createBtn">Create</button>
+          <button id="updateBtn" class="secondary">Update Selected</button>
+          <button id="clearBtn" class="secondary">Clear Form</button>
+        </div>
+        <div class="small" id="selectedId" style="margin-top:8px;">Selected: none</div>
+      </div>
+
+      <div class="card">
+        <div class="dashboard-header" style="margin-bottom:12px;">
+          <div>
+            <h3 style="margin-bottom:4px;">Inventory Items</h3>
+            <div class="small">Edit or remove saved stock records.</div>
+          </div>
+          <button id="refreshBtn">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Model</th>
+                <th>Part</th>
+                <th>Qty</th>
+                <th>Buy</th>
+                <th>Sell</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div class="workspace-section" id="section-operations">
+      <div class="operations-grid">
+        <div class="ops-stat">
+          <span>Available Stock Units</span>
+          <strong id="opsAvailableUnitsLive">0</strong>
+        </div>
+        <div class="ops-stat">
+          <span>Low Stock Lines</span>
+          <strong id="opsLowStockLive">0</strong>
+        </div>
+        <div class="ops-stat">
+          <span>Out of Stock Lines</span>
+          <strong id="opsOutOfStockLive">0</strong>
+        </div>
+      </div>
+      <div class="split-grid">
+        <div class="card">
+          <h3>Restock Watchlist</h3>
+          <div class="small" style="margin-bottom:12px;">Phone spare parts with low or zero quantity.</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Brand</th>
+                  <th>Model</th>
+                  <th>Part</th>
+                  <th>Qty</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="restockBodyLive"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Operations Notes</h3>
+          <div class="pill" id="operationsHealthBadge">Health: Stable</div>
+          <div id="operationsNotesLive" class="small" style="margin-top:12px;">Operational insights will appear here when inventory is loaded.</div>
+          <div id="operationsHealthList" class="small" style="margin-top:12px;"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="dashboard-header" style="margin-bottom:12px;">
+          <div>
+            <h3 style="margin-bottom:4px;">Operations Raw Data</h3>
+            <div class="small">Live stock lines used to calculate restock pressure and stock health.</div>
+          </div>
+          <div class="pill">Raw Inventory</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Model</th>
+                <th>Part</th>
+                <th>Qty</th>
+                <th>Buy</th>
+                <th>Sell</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="operationsRawBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="workspace-section" id="section-products">
+      <div class="split-grid">
+        <div class="card">
+          <div class="dashboard-header" style="margin-bottom:12px;">
+            <div>
+              <h3 style="margin-bottom:4px;">Phone Spare Parts Catalog</h3>
+              <div class="small">Grouped product view for brands, models, and part coverage.</div>
+            </div>
+            <div class="pill">Live Catalog</div>
+          </div>
+          <div class="products-grid" id="productsGridLive"></div>
+        </div>
+        <div class="card">
+          <h3>Suggested Product Lines</h3>
+          <div class="small" style="margin-bottom:12px;">Core phone spare-parts lines you can stock next from the wholesale catalog.</div>
+          <div id="catalogSuggestions" class="small"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="dashboard-header" style="margin-bottom:12px;">
+          <div>
+            <h3 style="margin-bottom:4px;">Products Raw Data</h3>
+            <div class="small">Grouped catalog view built from live inventory and phone spare-parts preview lines.</div>
+          </div>
+          <div class="pill">Catalog Rows</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Model</th>
+                <th>Parts</th>
+                <th>Units</th>
+                <th>Avg Sell</th>
+                <th>Coverage</th>
+              </tr>
+            </thead>
+            <tbody id="productsRawBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
     const API_BASE = "http://localhost:4000/api";
     const tokenKey = "mobimend_token";
+    const brandCatalogs = {
+      "Apple iPhone": ["iPhone 11", "iPhone 12", "iPhone 13", "iPhone 14", "iPhone 15", "iPhone 15 Pro", "iPhone 15 Pro Max", "iPhone 16", "iPhone 16 Plus", "iPhone 16 Pro"],
+      "Samsung Galaxy": ["Galaxy A15 5G", "Galaxy A25 5G", "Galaxy A35 5G", "Galaxy A55 5G", "Galaxy S24", "Galaxy S24 Ultra", "Galaxy S25"],
+      "Google Pixel": ["Pixel 6a", "Pixel 7a", "Pixel 8a", "Pixel 8", "Pixel 8 Pro"],
+      "OnePlus": ["OnePlus 11", "Nord CE 4", "Nord 4", "OnePlus 12", "OnePlus 12R"],
+      "Xiaomi": ["Redmi Note 13", "Redmi Note 13 Pro 5G", "Xiaomi 14", "Xiaomi 14 Ultra"],
+      "Oppo": ["OPPO A58", "OPPO A79 5G", "OPPO Reno11 5G", "OPPO Reno12 5G"],
+      "Huawei": ["HUAWEI nova 11", "HUAWEI nova 12i", "HUAWEI Pura 70", "HUAWEI Pura 70 Pro"],
+      "Motorola": ["Moto G54 5G", "Moto G84 5G", "Motorola Edge 40", "Motorola Edge 50 Pro"],
+      "Sony Xperia": ["Xperia 10 V", "Xperia 5 V", "Xperia 1 VI"],
+      "Tecno": ["TECNO Spark 20", "TECNO Spark 20 Pro", "TECNO Camon 30", "TECNO Camon 30 5G"],
+      "Infinix": ["Infinix Smart 8", "Infinix Note 40", "Infinix Note 40 Pro", "Infinix Zero 30"],
+      "Realme": ["realme C67", "realme C75", "realme 12 Pro+", "realme 13 Pro+"],
+      "Itel": ["itel A70", "itel S24", "itel P55 5G", "itel P65"]
+    };
+    const partTypeOptions = [
+      "Display Assembly",
+      "Battery",
+      "Charging Port",
+      "Camera Module",
+      "Back Housing"
+    ];
     let selectedId = null;
+    let currentInventoryItems = [];
 
-    const tokenDisplay = document.getElementById("tokenDisplay");
-    const tokenInput = document.getElementById("tokenInput");
+    const loginView = document.getElementById("loginView");
+    const dashboardView = document.getElementById("dashboardView");
+    const loginStatus = document.getElementById("loginStatus");
+    const dashboardStatus = document.getElementById("dashboardStatus");
+    const brandSelect = document.getElementById("brand");
+    const modelSelect = document.getElementById("model");
+    const partTypeSelect = document.getElementById("partType");
+    const statusSelect = document.getElementById("status");
+    const monthLabel = document.getElementById("monthLabel");
+    const metricItemsAdded = document.getElementById("metricItemsAdded");
+    const metricStockCost = document.getElementById("metricStockCost");
+    const metricRevenue = document.getElementById("metricRevenue");
+    const metricNet = document.getElementById("metricNet");
+    const metricNetCaption = document.getElementById("metricNetCaption");
+    const netMetricCard = document.getElementById("netMetricCard");
+    const progressChart = document.getElementById("progressChart");
+    const chartCaption = document.getElementById("chartCaption");
+    const restockBody = document.getElementById("restockBodyLive");
+    const operationsNotes = document.getElementById("operationsNotesLive");
+    const operationsHealthBadge = document.getElementById("operationsHealthBadge");
+    const operationsHealthList = document.getElementById("operationsHealthList");
+    const operationsRawBody = document.getElementById("operationsRawBody");
+    const productsGrid = document.getElementById("productsGridLive");
+    const catalogSuggestions = document.getElementById("catalogSuggestions");
+    const productsRawBody = document.getElementById("productsRawBody");
+    const opsAvailableUnits = document.getElementById("opsAvailableUnitsLive");
+    const opsLowStock = document.getElementById("opsLowStockLive");
+    const opsOutOfStock = document.getElementById("opsOutOfStockLive");
 
     const setToken = (token) => {
-      localStorage.setItem(tokenKey, token);
-      tokenDisplay.textContent = token || "Not set";
+      if (token) {
+        localStorage.setItem(tokenKey, token);
+        return;
+      }
+      localStorage.removeItem(tokenKey);
     };
 
     const getToken = () => localStorage.getItem(tokenKey);
+    const formatKes = (value) => `KES ${Math.round(value || 0).toLocaleString()}`;
+    const normalizeStatus = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
 
-    setToken(getToken() || "");
+    const showBanner = (element, message, tone) => {
+      element.textContent = message;
+      element.className = `status-banner ${tone} active`;
+    };
+
+    const clearBanner = (element) => {
+      element.textContent = "";
+      element.className = "status-banner";
+    };
+
+    const switchSection = (sectionName) => {
+      dashboardView.querySelectorAll(".module-tab").forEach((button) => {
+        button.classList.toggle("active", button.dataset.section === sectionName);
+      });
+      dashboardView.querySelectorAll(".workspace-section").forEach((section) => {
+        section.classList.toggle("active", section.id === `section-${sectionName}`);
+      });
+    };
+
+    const populateBrandOptions = () => {
+      brandSelect.innerHTML = '<option value="">Select Brand</option>';
+      Object.keys(brandCatalogs).forEach((brand) => {
+        const option = document.createElement("option");
+        option.value = brand;
+        option.textContent = brand;
+        brandSelect.appendChild(option);
+      });
+    };
+
+    const populateModelOptions = (brand, selectedModel = "") => {
+      modelSelect.innerHTML = '<option value="">Select Model</option>';
+      const models = brandCatalogs[brand] || [];
+      models.forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model;
+        option.textContent = model;
+        if (model === selectedModel) {
+          option.selected = true;
+        }
+        modelSelect.appendChild(option);
+      });
+    };
+
+    const populatePartTypeOptions = () => {
+      partTypeSelect.innerHTML = '<option value="">Select Part Type</option>';
+      partTypeOptions.forEach((partType) => {
+        const option = document.createElement("option");
+        option.value = partType;
+        option.textContent = partType;
+        partTypeSelect.appendChild(option);
+      });
+    };
+
+    const getCatalogPreviewItems = () => [
+      { brand: "Apple iPhone", model: "iPhone 13", partType: "Display Assembly", quantity: 3, status: "in_stock", buyPrice: 8200, sellPrice: 11000 },
+      { brand: "Samsung Galaxy", model: "Galaxy A35 5G", partType: "Battery", quantity: 2, status: "in_stock", buyPrice: 1800, sellPrice: 3200 },
+      { brand: "Tecno", model: "TECNO Camon 30", partType: "Charging Port", quantity: 0, status: "out_of_stock", buyPrice: 650, sellPrice: 1300 },
+      { brand: "Infinix", model: "Infinix Note 40", partType: "Camera Module", quantity: 4, status: "in_stock", buyPrice: 1400, sellPrice: 2500 },
+      { brand: "Xiaomi", model: "Redmi Note 13", partType: "Back Housing", quantity: 1, status: "in_stock", buyPrice: 900, sellPrice: 1700 },
+      { brand: "Google Pixel", model: "Pixel 8", partType: "Display Assembly", quantity: 0, status: "out_of_stock", buyPrice: 7600, sellPrice: 9800 }
+    ];
+
+    const statusToSelectValue = (status) => String(status || "").trim().toLowerCase() === "in_stock" ? "yes" : "no";
+    const selectValueToStatus = (value) => value === "yes" ? "in_stock" : "out_of_stock";
+
+    const updateAnalytics = (items) => {
+      const now = new Date();
+      const monthName = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+      monthLabel.textContent = `${monthName} inventory summary`;
+
+      const monthlyItems = items.filter((item) => {
+        const createdAt = new Date(item.createdAt);
+        return createdAt.getFullYear() === now.getFullYear() && createdAt.getMonth() === now.getMonth();
+      });
+
+      const itemsAdded = monthlyItems.length;
+      const stockCost = monthlyItems.reduce((sum, item) => sum + (Number(item.buyPrice || 0) * Number(item.quantity || 0)), 0);
+      const projectedRevenue = monthlyItems.reduce((sum, item) => sum + (Number(item.sellPrice || 0) * Number(item.quantity || 0)), 0);
+      const net = projectedRevenue - stockCost;
+
+      metricItemsAdded.textContent = itemsAdded.toLocaleString();
+      metricStockCost.textContent = formatKes(stockCost);
+      metricRevenue.textContent = formatKes(projectedRevenue);
+      metricNet.textContent = formatKes(net);
+      netMetricCard.classList.remove("positive", "negative");
+      netMetricCard.classList.add(net >= 0 ? "positive" : "negative");
+      metricNetCaption.textContent = net >= 0
+        ? "Estimated positive margin from this month’s inventory additions."
+        : "Estimated negative margin. Check sell price against buy price.";
+
+      const weeklyBuckets = Array.from({ length: 5 }, (_, index) => ({
+        label: `Week ${index + 1}`,
+        quantity: 0
+      }));
+
+      monthlyItems.forEach((item) => {
+        const createdAt = new Date(item.createdAt);
+        const bucketIndex = Math.min(4, Math.floor((createdAt.getDate() - 1) / 7));
+        weeklyBuckets[bucketIndex].quantity += Number(item.quantity || 0);
+      });
+
+      const maxQuantity = Math.max(...weeklyBuckets.map((bucket) => bucket.quantity), 0);
+      progressChart.innerHTML = "";
+
+      if (!itemsAdded || maxQuantity === 0) {
+        progressChart.innerHTML = `
+          <div class="chart-empty">
+            <div>No inventory entries have been added for this month yet.</div>
+          </div>
+        `;
+        chartCaption.textContent = "Add inventory this month to see weekly progress and monthly performance.";
+        return;
+      }
+
+      weeklyBuckets.forEach((bucket) => {
+        const barHeight = Math.max(12, Math.round((bucket.quantity / maxQuantity) * 160));
+        const group = document.createElement("div");
+        group.className = "chart-bar-group";
+        group.innerHTML = `
+          <div class="chart-bar-value">${bucket.quantity}</div>
+          <div class="chart-bar" style="height:${barHeight}px;"></div>
+          <div class="chart-bar-label">${bucket.label}</div>
+        `;
+        progressChart.appendChild(group);
+      });
+
+      chartCaption.textContent = `Weekly quantity progress for ${monthName}. Calculated from inventory records created this month.`;
+    };
+
+    const renderRealizedAnalytics = (analytics) => {
+      const monthName = analytics?.month?.label || "Current Month";
+      const metrics = analytics?.metrics || {};
+      const weeklySales = Array.isArray(analytics?.weeklySales) ? analytics.weeklySales : [];
+      const itemsAdded = Number(metrics.itemsAdded || 0);
+      const stockCost = Number(metrics.stockCost || 0);
+      const revenue = Number(metrics.revenue || 0);
+      const net = Number(metrics.profit || 0);
+      const unitsSold = Number(metrics.unitsSold || 0);
+
+      monthLabel.textContent = `${monthName} sales and inventory summary`;
+      metricItemsAdded.textContent = itemsAdded.toLocaleString();
+      metricStockCost.textContent = formatKes(stockCost);
+      metricRevenue.textContent = formatKes(revenue);
+      metricNet.textContent = formatKes(net);
+      netMetricCard.classList.remove("positive", "negative");
+      netMetricCard.classList.add(net >= 0 ? "positive" : "negative");
+      metricNetCaption.textContent = net >= 0
+        ? "Realized profit from completed sales recorded this month."
+        : "Realized loss from completed sales this month. Review your pricing and costs.";
+
+      const maxQuantity = Math.max(...weeklySales.map((bucket) => Number(bucket.quantitySold || 0)), 0);
+      progressChart.innerHTML = "";
+
+      if (!unitsSold || maxQuantity === 0) {
+        progressChart.innerHTML = `
+          <div class="chart-empty">
+            <div>No completed checkout transactions have been recorded this month yet.</div>
+          </div>
+        `;
+        chartCaption.textContent = "Complete a sale from the wholesale page to populate realized revenue and profit.";
+        return;
+      }
+
+      weeklySales.forEach((bucket) => {
+        const quantitySold = Number(bucket.quantitySold || 0);
+        const revenueValue = Number(bucket.revenue || 0);
+        const barHeight = Math.max(12, Math.round((quantitySold / maxQuantity) * 160));
+        const group = document.createElement("div");
+        group.className = "chart-bar-group";
+        group.innerHTML = `
+          <div class="chart-bar-value">${quantitySold} sold</div>
+          <div class="chart-bar" style="height:${barHeight}px;"></div>
+          <div class="chart-bar-label">${bucket.label}<br>${formatKes(revenueValue)}</div>
+        `;
+        progressChart.appendChild(group);
+      });
+
+      chartCaption.textContent = `Weekly realized sales progress for ${monthName}. Revenue is shown below each bar.`;
+    };
+
+    const loadAnalytics = async () => {
+      const token = getToken();
+      if (!token) return;
+
+      const res = await fetch(`${API_BASE}/inventory/analytics/monthly`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showBanner(dashboardStatus, data.error || "Could not load analytics.", "error");
+        return;
+      }
+
+      const analytics = await res.json();
+      renderRealizedAnalytics(analytics);
+    };
+
+    const renderOperations = (items) => {
+      const sourceItems = Array.isArray(items) ? items : [];
+      const availableUnits = sourceItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      const lowStockItems = sourceItems.filter((item) => Number(item.quantity || 0) > 0 && Number(item.quantity || 0) <= 5);
+      const outOfStockItems = sourceItems.filter((item) => Number(item.quantity || 0) <= 0 || normalizeStatus(item.status) !== "in_stock");
+      const activeBrands = new Set(sourceItems.map((item) => item.brand).filter(Boolean));
+      const highValueItems = [...sourceItems]
+        .sort((a, b) => Number(b.sellPrice || 0) - Number(a.sellPrice || 0))
+        .slice(0, 3);
+
+      opsAvailableUnits.textContent = availableUnits.toLocaleString();
+      opsLowStock.textContent = lowStockItems.length.toLocaleString();
+      opsOutOfStock.textContent = outOfStockItems.length.toLocaleString();
+      restockBody.innerHTML = "";
+      operationsRawBody.innerHTML = "";
+
+      const watchlist = [...lowStockItems, ...outOfStockItems.filter((item) => !lowStockItems.includes(item))];
+      if (!sourceItems.length) {
+        restockBody.innerHTML = '<tr><td colspan="5" class="small">No inventory items yet. Add stock in the Inventory tab to populate operations data.</td></tr>';
+      } else if (!watchlist.length) {
+        restockBody.innerHTML = '<tr><td colspan="5" class="small">No urgent restock lines right now.</td></tr>';
+      } else {
+        watchlist.slice(0, 8).forEach((item) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${item.brand || ""}</td>
+            <td>${item.model || ""}</td>
+            <td>${item.partType || ""}</td>
+            <td>${item.quantity ?? ""}</td>
+            <td>${item.status || ""}</td>
+          `;
+          restockBody.appendChild(row);
+        });
+      }
+
+      if (outOfStockItems.length > 0) {
+        operationsHealthBadge.textContent = "Health: Attention Needed";
+      } else if (lowStockItems.length > 0) {
+        operationsHealthBadge.textContent = "Health: Watch Restocking";
+      } else {
+        operationsHealthBadge.textContent = "Health: Stable";
+      }
+
+      if (!sourceItems.length) {
+        operationsHealthBadge.textContent = "Health: Waiting for Stock";
+        operationsNotes.textContent = "Operations will mirror the live inventory list after you create products in the Inventory tab.";
+      } else {
+        operationsNotes.textContent = lowStockItems.length
+          ? `${lowStockItems.length} spare-part lines are running low. Prioritize displays, batteries, and fast-moving models for restocking.`
+          : "Stock levels look healthy. No immediate low-stock pressure detected from current inventory.";
+      }
+
+      operationsHealthList.innerHTML = `
+        <div>Active brands in stock: ${activeBrands.size}</div>
+        <div>Priority value items: ${highValueItems.length ? highValueItems.map((item) => `${item.model} ${item.partType}`).join(", ") : "None yet"}</div>
+        <div>Operational focus: ${outOfStockItems.length ? "Replenish sold-out lines first" : "Expand high-demand product coverage"}</div>
+      `;
+
+      if (!sourceItems.length) {
+        operationsRawBody.innerHTML = '<tr><td colspan="7" class="small">No raw operations data yet. Create inventory items to see them here.</td></tr>';
+        return;
+      }
+
+      sourceItems
+        .slice()
+        .sort((a, b) => `${a.brand} ${a.model} ${a.partType}`.localeCompare(`${b.brand} ${b.model} ${b.partType}`))
+        .forEach((item) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${item.brand || ""}</td>
+            <td>${item.model || ""}</td>
+            <td>${item.partType || ""}</td>
+            <td>${Number(item.quantity || 0)}</td>
+            <td>${formatKes(item.buyPrice || 0)}</td>
+            <td>${formatKes(item.sellPrice || 0)}</td>
+            <td>${item.status || ""}</td>
+          `;
+          operationsRawBody.appendChild(row);
+        });
+    };
+
+    const renderProducts = (items) => {
+      const sourceItems = Array.isArray(items) ? items : [];
+      const grouped = new Map();
+      sourceItems.forEach((item) => {
+        const key = `${item.brand}__${item.model}`;
+        const current = grouped.get(key) || {
+          brand: item.brand,
+          model: item.model,
+          totalUnits: 0,
+          partCount: 0,
+          partTypes: [],
+          avgSell: 0,
+          lineCount: 0
+        };
+        current.totalUnits += Number(item.quantity || 0);
+        current.partCount += 1;
+        current.partTypes.push(item.partType);
+        current.avgSell += Number(item.sellPrice || 0);
+        current.lineCount += 1;
+        grouped.set(key, current);
+      });
+
+      productsGrid.innerHTML = "";
+      productsRawBody.innerHTML = "";
+      catalogSuggestions.innerHTML = "";
+
+      if (!sourceItems.length) {
+        productsGrid.innerHTML = `
+          <article class="product-card">
+            <h4>No Products Added Yet</h4>
+            <p>The products view will be built automatically from the real phone spare parts you add in the Inventory tab.</p>
+            <div class="product-meta">
+              <span>0 models</span>
+              <span>0 units</span>
+              <span>Live inventory only</span>
+            </div>
+          </article>
+        `;
+        catalogSuggestions.innerHTML = '<div style="margin-bottom:10px;">Add inventory records to generate grouped products by brand and model.</div>';
+        productsRawBody.innerHTML = '<tr><td colspan="6" class="small">No product rows yet. Inventory entries will appear here after creation.</td></tr>';
+        return;
+      }
+
+      const suggestionLines = Array.from(grouped.values())
+        .sort((a, b) => b.totalUnits - a.totalUnits)
+        .slice(0, 8)
+        .map((product) => `${product.brand} - ${product.model} - ${product.totalUnits} units across ${product.partCount} parts`);
+      catalogSuggestions.innerHTML = suggestionLines
+        .map((line) => `<div style="margin-bottom:10px;">${line}</div>`)
+        .join("");
+
+      Array.from(grouped.values())
+        .sort((a, b) => `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`))
+        .forEach((product) => {
+          const card = document.createElement("article");
+          card.className = "product-card";
+          card.innerHTML = `
+            <h4>${product.model}</h4>
+            <p>${product.brand}</p>
+            <p>${product.partTypes.slice(0, 3).join(", ")}${product.partTypes.length > 3 ? "..." : ""}</p>
+            <p>Status: ${product.totalUnits > 0 ? "Stocked" : "Needs restock"}</p>
+            <div class="product-meta">
+              <span>${product.partCount} parts</span>
+              <span>${product.totalUnits} units</span>
+              <span>${formatKes(product.avgSell / Math.max(product.lineCount, 1))} avg sell</span>
+            </div>
+          `;
+          productsGrid.appendChild(card);
+        });
+
+      Array.from(grouped.values())
+        .sort((a, b) => `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`))
+        .forEach((product) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${product.brand || ""}</td>
+            <td>${product.model || ""}</td>
+            <td>${product.partTypes.join(", ")}</td>
+            <td>${product.totalUnits}</td>
+            <td>${formatKes(product.avgSell / Math.max(product.lineCount, 1))}</td>
+            <td>${product.partCount} parts</td>
+          `;
+          productsRawBody.appendChild(row);
+        });
+
+    };
+
+    const syncInventoryViews = (items) => {
+      currentInventoryItems = Array.isArray(items) ? items : [];
+      renderOperations(currentInventoryItems);
+      renderProducts(currentInventoryItems);
+      updateAnalytics(currentInventoryItems);
+    };
+
+    const showLoginView = (message = "") => {
+      loginView.classList.add("active");
+      dashboardView.classList.remove("active");
+      clearBanner(dashboardStatus);
+      if (message) {
+        showBanner(loginStatus, message, "info");
+      } else {
+        clearBanner(loginStatus);
+      }
+    };
+
+    const showDashboardView = (message = "") => {
+      dashboardView.classList.add("active");
+      loginView.classList.remove("active");
+      clearBanner(loginStatus);
+      if (message) {
+        showBanner(dashboardStatus, message, "success");
+      } else {
+        clearBanner(dashboardStatus);
+      }
+    };
 
     document.getElementById("loginBtn").addEventListener("click", async () => {
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value.trim();
       if (!email || !password) {
-        alert("Email and password are required");
+        showBanner(loginStatus, "Email and password are required.", "error");
         return;
       }
       const res = await fetch(`${API_BASE}/auth/login`, {
@@ -158,32 +1151,40 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Login failed");
+        showBanner(loginStatus, data.error || "Login failed.", "error");
         return;
       }
       setToken(data.token);
-      alert("Logged in");
+      showDashboardView("Logged in successfully.");
+      loadInventory();
+      loadAnalytics();
     });
 
-    document.getElementById("saveTokenBtn").addEventListener("click", () => {
-      setToken(tokenInput.value.trim());
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      setToken("");
+      clearForm();
+      showLoginView("You have been logged out.");
     });
 
     const getFormData = () => ({
-      brand: document.getElementById("brand").value.trim(),
-      model: document.getElementById("model").value.trim(),
-      partType: document.getElementById("partType").value.trim(),
+      brand: brandSelect.value.trim(),
+      model: modelSelect.value.trim(),
+      partType: partTypeSelect.value.trim(),
       quantity: Number(document.getElementById("quantity").value || 0),
       buyPrice: Number(document.getElementById("buyPrice").value || 0),
       sellPrice: Number(document.getElementById("sellPrice").value || 0),
-      status: document.getElementById("status").value.trim() || "in_stock",
+      status: selectValueToStatus(statusSelect.value),
       notes: document.getElementById("notes").value.trim()
     });
 
     const clearForm = () => {
-      ["brand","model","partType","quantity","buyPrice","sellPrice","status","notes"].forEach(id => {
+      ["quantity","buyPrice","sellPrice","notes"].forEach(id => {
         document.getElementById(id).value = "";
       });
+      brandSelect.value = "";
+      populateModelOptions("");
+      partTypeSelect.value = "";
+      statusSelect.value = "yes";
       selectedId = null;
       document.getElementById("selectedId").textContent = "Selected: none";
     };
@@ -204,11 +1205,13 @@
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Create failed");
+        showBanner(dashboardStatus, data.error || "Create failed.", "error");
         return;
       }
       clearForm();
+      showBanner(dashboardStatus, "Inventory item created.", "success");
       loadInventory();
+      loadAnalytics();
     });
 
     document.getElementById("updateBtn").addEventListener("click", async () => {
@@ -226,11 +1229,13 @@
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Update failed");
+        showBanner(dashboardStatus, data.error || "Update failed.", "error");
         return;
       }
       clearForm();
+      showBanner(dashboardStatus, "Inventory item updated.", "success");
       loadInventory();
+      loadAnalytics();
     });
 
     const deleteItem = async (id) => {
@@ -243,31 +1248,35 @@
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Delete failed");
+        showBanner(dashboardStatus, data.error || "Delete failed.", "error");
         return;
       }
+      showBanner(dashboardStatus, "Inventory item deleted.", "success");
       loadInventory();
+      loadAnalytics();
     };
 
     const selectItem = (item) => {
       selectedId = item._id;
-      document.getElementById("brand").value = item.brand || "";
-      document.getElementById("model").value = item.model || "";
-      document.getElementById("partType").value = item.partType || "";
+      brandSelect.value = item.brand || "";
+      populateModelOptions(item.brand || "", item.model || "");
+      partTypeSelect.value = item.partType || "";
       document.getElementById("quantity").value = item.quantity || 0;
       document.getElementById("buyPrice").value = item.buyPrice || 0;
       document.getElementById("sellPrice").value = item.sellPrice || 0;
-      document.getElementById("status").value = item.status || "in_stock";
+      statusSelect.value = statusToSelectValue(item.status);
       document.getElementById("notes").value = item.notes || "";
       document.getElementById("selectedId").textContent = `Selected: ${item._id}`;
+      switchSection("inventory");
     };
 
     const loadInventory = async () => {
       const res = await fetch(`${API_BASE}/inventory`);
       const items = await res.json();
+      currentInventoryItems = Array.isArray(items) ? items : [];
       const body = document.getElementById("inventoryBody");
       body.innerHTML = "";
-      items.forEach(item => {
+      currentInventoryItems.forEach(item => {
         const row = document.createElement("tr");
         row.innerHTML = `
           <td>${item.brand || ""}</td>
@@ -286,10 +1295,31 @@
         row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteItem(item._id));
         body.appendChild(row);
       });
+      if (!currentInventoryItems.length) {
+        body.innerHTML = '<tr><td colspan="8" class="small">No inventory items yet. Create a phone spare part to get started.</td></tr>';
+      }
+      syncInventoryViews(currentInventoryItems);
     };
 
+    brandSelect.addEventListener("change", () => {
+      populateModelOptions(brandSelect.value);
+    });
+    document.querySelectorAll(".module-tab").forEach((button) => {
+      button.addEventListener("click", () => switchSection(button.dataset.section));
+    });
+
     document.getElementById("refreshBtn").addEventListener("click", loadInventory);
-    loadInventory();
+    populateBrandOptions();
+    populateModelOptions("");
+    populatePartTypeOptions();
+    statusSelect.value = "yes";
+    if (getToken()) {
+      showDashboardView();
+      loadInventory();
+      loadAnalytics();
+    } else {
+      showLoginView();
+    }
   </script>
 </body>
 </html>
