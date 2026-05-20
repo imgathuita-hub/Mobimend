@@ -560,6 +560,7 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
         <li><a href="repair.php">Repair</a></li>
         <li><a href="accessories.php">Shop</a></li>
         <li><a href="wholesale.php">Wholesale</a></li>
+        <li><a href="blog.php">Blog</a></li>
         <li><a href="track.php">Track</a></li>
         <li><a class="active" href="account.php">Account</a></li>
       </ul>
