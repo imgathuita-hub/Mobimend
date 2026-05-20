@@ -33,9 +33,32 @@ function session_payload(array $user): array
     ];
 }
 
+function rotate_session_id_safely(): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        @session_start();
+    }
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    if (@session_regenerate_id(true)) {
+        return;
+    }
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        @session_start();
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        @session_regenerate_id(false);
+    }
+}
+
 function open_session_for(array $user, array $adminRoles): void
 {
-    session_regenerate_id(true);
+    rotate_session_id_safely();
     $payload = session_payload($user);
 
     if (in_array($payload['role'], $adminRoles, true)) {
@@ -203,7 +226,17 @@ function clear_remember_cookie(PDO $pdo, string $cookieName, bool $secure): void
 if (isset($_GET['logout'])) {
     clear_remember_cookie($pdo, $rememberCookie, $isHttps);
     $_SESSION = [];
-    session_destroy();
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_destroy();
+    }
+    setcookie(session_name(), '', [
+        'expires' => time() - 3600,
+        'path' => '/',
+        'httponly' => true,
+        'secure' => $isHttps,
+        'samesite' => 'Lax',
+    ]);
+    session_write_close();
     header('Location: account.php?mode=login');
     exit;
 }
@@ -516,132 +549,205 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
 </head>
 <body class="account-body <?= $showAuth ? 'auth-mode' : 'dashboard-mode' ?>">
   <?php if ($showAuth): ?>
-    <header class="auth-topbar">
-      <a class="auth-topbrand" href="index.php">
-        <img src="../../public/assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend">
-        <span>Mobimend Spares</span>
+    <nav class="site-nav account-auth-nav">
+      <a class="nav-left" href="index.php">
+        <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
+        <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Secure portal</p></div>
       </a>
-      <a class="auth-home-link" href="index.php"><i class="fa-solid fa-arrow-left"></i> Back to website</a>
-    </header>
+      <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
+      <ul class="nav-links" id="nav-links">
+        <li><a href="index.php">Home</a></li>
+        <li><a href="repair.php">Repair</a></li>
+        <li><a href="accessories.php">Shop</a></li>
+        <li><a href="wholesale.php">Wholesale</a></li>
+        <li><a href="track.php">Track</a></li>
+        <li><a class="active" href="account.php">Account</a></li>
+      </ul>
+    </nav>
 
-    <main class="auth-page">
-      <section class="auth-card">
-        <div class="auth-card-header">
-          <span>Secure account</span>
-          <strong>Access your Mobimend workspace</strong>
+    <main class="account-login-shell portal-login-shell">
+      <section class="portal-auth-stage">
+        <div class="portal-stage-copy">
+          <p class="section-kicker"><i class="fa-solid fa-shield-halved"></i> One secure Mobimend ID</p>
+          <h1>Repair tracking, shopping, wholesale, and operations in one account.</h1>
+          <p>Customers get a clear service hub. Admins and technicians get a guarded route into the command workspace after their role is verified.</p>
         </div>
 
-        <?php if ($notice !== ''): ?>
-          <div class="auth-notice <?= htmlspecialchars($noticeTone) ?>"><?= htmlspecialchars($notice) ?></div>
-        <?php endif; ?>
-        <div class="auth-tabs">
-          <button type="button" class="<?= $mode === 'login' ? 'active' : '' ?>" data-auth-panel="login">Login</button>
-          <button type="button" class="<?= $mode === 'signup' ? 'active' : '' ?>" data-auth-panel="signup">Sign up</button>
+        <div class="portal-device-card" aria-label="Mobimend account workspace preview">
+          <div class="portal-device-top">
+            <span>Mobimend OS</span>
+            <strong data-portal-mode-label><?= $mode === 'signup' ? 'Customer onboarding' : 'Secure sign in' ?></strong>
+          </div>
+          <div class="portal-orbit">
+            <span><i class="fa-solid fa-screwdriver-wrench"></i></span>
+            <span><i class="fa-solid fa-bag-shopping"></i></span>
+            <span><i class="fa-solid fa-boxes-stacked"></i></span>
+          </div>
+          <div class="portal-flow-card active" data-flow-card="customer">
+            <small>Customer journey</small>
+            <strong>Book, pay, track, and reorder</strong>
+            <div class="portal-progress"><span style="width: 76%"></span></div>
+          </div>
+          <div class="portal-flow-card" data-flow-card="admin">
+            <small>Admin operations</small>
+            <strong>Repairs, inventory, orders, payments</strong>
+            <div class="portal-progress"><span style="width: 88%"></span></div>
+          </div>
+          <div class="portal-mini-grid">
+            <div><strong>90 days</strong><span>Repair warranty</span></div>
+            <div><strong>M-Pesa</strong><span>Receipt trail</span></div>
+            <div><strong>Live</strong><span>Status updates</span></div>
+          </div>
         </div>
 
-        <form method="post" class="auth-panel <?= $mode === 'login' ? 'active' : '' ?>" data-panel="login">
-          <input type="hidden" name="action" value="login">
-          <h1>Welcome back</h1>
-          <label>Email</label>
-          <input name="email" type="email" value="<?= htmlspecialchars((string) ($_POST['email'] ?? '')) ?>" required>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['login_email'] ?? '') ?></div>
-
-          <label>Password</label>
-          <div class="password-field">
-            <input name="password" type="password" required>
-            <button type="button" data-toggle-password>Show</button>
-          </div>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['login_password'] ?? '') ?></div>
-
-          <label class="remember-row"><input name="remember" type="checkbox"> Remember me</label>
-          <button class="btn-primary" type="submit">Login</button>
-          <div class="auth-links">
-            <a href="#" data-auth-panel="forgot">Forgot your password?</a>
-            <a href="#" data-auth-panel="signup">Don't have an account? Sign up</a>
-          </div>
-        </form>
-
-        <form method="post" class="auth-panel <?= $mode === 'signup' ? 'active' : '' ?>" data-panel="signup">
-          <input type="hidden" name="action" value="signup">
-          <h1>Create account</h1>
-          <label>Full name</label>
-          <input name="name" value="<?= htmlspecialchars((string) ($_POST['name'] ?? '')) ?>" required>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_name'] ?? '') ?></div>
-
-          <label>Email</label>
-          <input name="email" type="email" value="<?= htmlspecialchars((string) ($_POST['email'] ?? '')) ?>" required>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_email'] ?? '') ?></div>
-
-          <label>Phone number</label>
-          <input name="phone" value="<?= htmlspecialchars((string) ($_POST['phone'] ?? '')) ?>" required>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_phone'] ?? '') ?></div>
-
-          <label>Password</label>
-          <div class="password-field">
-            <input name="password" type="password" data-strength-source required>
-            <button type="button" data-toggle-password>Show</button>
-          </div>
-          <div class="password-strength" data-strength-meter><span></span></div>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_password'] ?? '') ?></div>
-
-          <label>Confirm password</label>
-          <div class="password-field">
-            <input name="confirm_password" type="password" required>
-            <button type="button" data-toggle-password>Show</button>
-          </div>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_confirm'] ?? '') ?></div>
-
-          <button class="btn-primary" type="submit">Create account</button>
-          <div class="auth-links"><a href="#" data-auth-panel="login">Already have an account? Login</a></div>
-        </form>
-
-        <form method="post" class="auth-panel <?= $mode === 'forgot' ? 'active' : '' ?>" data-panel="forgot">
-          <input type="hidden" name="action" value="forgot">
-          <h1>Reset password</h1>
-          <p>Enter your email and we will prepare a one-hour reset link.</p>
-          <label>Email</label>
-          <input name="email" type="email" required>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['forgot_email'] ?? '') ?></div>
-          <button class="btn-primary" type="submit">Send reset link</button>
-          <div class="auth-links"><a href="#" data-auth-panel="login">Back to login</a></div>
-        </form>
-
-        <form method="post" class="auth-panel <?= $mode === 'reset' ? 'active' : '' ?>" data-panel="reset">
-          <input type="hidden" name="action" value="reset">
-          <input type="hidden" name="token" value="<?= htmlspecialchars($resetToken) ?>">
-          <h1>Choose new password</h1>
-          <label>New password</label>
-          <div class="password-field">
-            <input name="password" type="password" data-strength-source required>
-            <button type="button" data-toggle-password>Show</button>
-          </div>
-          <div class="password-strength" data-strength-meter><span></span></div>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['reset_password'] ?? '') ?></div>
-
-          <label>Confirm new password</label>
-          <div class="password-field">
-            <input name="confirm_password" type="password" required>
-            <button type="button" data-toggle-password>Show</button>
-          </div>
-          <div class="field-error"><?= htmlspecialchars($fieldErrors['reset_confirm'] ?? '') ?></div>
-          <button class="btn-primary" type="submit">Update password</button>
-        </form>
+        <div class="portal-business-lanes" aria-label="Mobimend business model">
+          <article>
+            <i class="fa-solid fa-mobile-screen-button"></i>
+            <span>Repair CRM</span>
+            <strong>Diagnostics, bookings, repair status, warranty history.</strong>
+          </article>
+          <article>
+            <i class="fa-solid fa-cart-shopping"></i>
+            <span>Commerce</span>
+            <strong>Accessories, repeat purchases, and saved customer records.</strong>
+          </article>
+          <article>
+            <i class="fa-solid fa-warehouse"></i>
+            <span>Wholesale</span>
+            <strong>Parts availability, reseller accounts, and inventory velocity.</strong>
+          </article>
+          <article>
+            <i class="fa-solid fa-user-gear"></i>
+            <span>Admin OS</span>
+            <strong>Technician queues, stock alerts, payments, and customer care.</strong>
+          </article>
+        </div>
       </section>
-      <aside class="auth-showcase">
-        <p class="section-kicker"><i class="fa-solid fa-shield-halved"></i> Account workspace</p>
-        <h2>Track, buy, pay, and manage from one secure Mobimend account.</h2>
-        <div class="auth-feature-grid">
-          <div><i class="fa-solid fa-screwdriver-wrench"></i><span>Repair status</span></div>
-          <div><i class="fa-solid fa-credit-card"></i><span>Payment receipts</span></div>
-          <div><i class="fa-solid fa-bag-shopping"></i><span>Order history</span></div>
-          <div><i class="fa-solid fa-user-gear"></i><span>Admin tools</span></div>
+
+      <section class="login-panel portal-login-panel">
+        <div class="login-card portal-login-card">
+          <div class="portal-card-header">
+            <span><i class="fa-solid fa-lock"></i></span>
+            <div>
+              <strong>Account portal</strong>
+              <p>Customer and admin access</p>
+            </div>
+          </div>
+
+          <div class="portal-intent-tabs" role="tablist" aria-label="Choose account type">
+            <button class="active" type="button" data-login-intent="customer"><i class="fa-solid fa-user"></i> Customer</button>
+            <button type="button" data-login-intent="admin"><i class="fa-solid fa-user-shield"></i> Admin</button>
+          </div>
+
+          <?php if ($notice !== ''): ?>
+            <div class="auth-notice <?= htmlspecialchars($noticeTone) ?>"><?= htmlspecialchars($notice) ?></div>
+          <?php endif; ?>
+
+          <form method="post" class="auth-panel <?= $mode === 'login' ? 'active' : '' ?>" data-panel="login">
+            <input type="hidden" name="action" value="login">
+            <h1 data-login-title>Welcome back</h1>
+            <p data-login-copy>Sign in to track repairs, orders, payments, warranties, and saved service history.</p>
+
+            <label>Email</label>
+            <input name="email" type="email" placeholder="you@example.com" value="<?= htmlspecialchars((string) ($_POST['email'] ?? '')) ?>" data-login-email required>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['login_email'] ?? '') ?></div>
+
+            <label>Password</label>
+            <div class="password-field">
+              <input name="password" type="password" placeholder="********" required>
+              <button type="button" data-toggle-password>Show</button>
+            </div>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['login_password'] ?? '') ?></div>
+
+            <div class="login-options-row">
+              <label class="remember-row"><input name="remember" type="checkbox"> Remember me</label>
+              <a href="#" data-auth-panel="forgot">Forgot password</a>
+            </div>
+
+            <button class="btn-primary login-submit" type="submit"><i class="fa-solid fa-arrow-right-to-bracket"></i> Continue securely</button>
+            <div class="portal-login-note" data-login-note><i class="fa-solid fa-circle-info"></i> Admin accounts are routed automatically by role after login.</div>
+            <p class="login-signup-copy" data-customer-signup-copy>New customer? <a href="#" data-auth-panel="signup">Create your Mobimend ID</a></p>
+          </form>
+
+          <form method="post" class="auth-panel <?= $mode === 'signup' ? 'active' : '' ?>" data-panel="signup">
+            <input type="hidden" name="action" value="signup">
+            <h1>Create customer ID</h1>
+            <p>Save repair history, receipts, warranty records, and faster checkout details.</p>
+            <label>Full name</label>
+            <input name="name" placeholder="Jane Customer" value="<?= htmlspecialchars((string) ($_POST['name'] ?? '')) ?>" required>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_name'] ?? '') ?></div>
+
+            <label>Email</label>
+            <input name="email" type="email" placeholder="you@example.com" value="<?= htmlspecialchars((string) ($_POST['email'] ?? '')) ?>" required>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_email'] ?? '') ?></div>
+
+            <label>Phone number</label>
+            <input name="phone" placeholder="07XX XXX XXX" value="<?= htmlspecialchars((string) ($_POST['phone'] ?? '')) ?>" required>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_phone'] ?? '') ?></div>
+
+            <label>Password</label>
+            <div class="password-field">
+              <input name="password" type="password" data-strength-source required>
+              <button type="button" data-toggle-password>Show</button>
+            </div>
+            <div class="password-strength" data-strength-meter><span></span></div>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_password'] ?? '') ?></div>
+
+            <label>Confirm password</label>
+            <div class="password-field">
+              <input name="confirm_password" type="password" required>
+              <button type="button" data-toggle-password>Show</button>
+            </div>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['signup_confirm'] ?? '') ?></div>
+
+            <button class="btn-primary login-submit" type="submit"><i class="fa-solid fa-user-plus"></i> Create account</button>
+            <p class="login-signup-copy"><a href="#" data-auth-panel="login">Already have an account? Login</a></p>
+          </form>
+
+          <form method="post" class="auth-panel <?= $mode === 'forgot' ? 'active' : '' ?>" data-panel="forgot">
+            <input type="hidden" name="action" value="forgot">
+            <h1>Reset password</h1>
+            <p>Enter your email and we will prepare a one-hour reset link.</p>
+            <label>Email</label>
+            <input name="email" type="email" placeholder="you@example.com" required>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['forgot_email'] ?? '') ?></div>
+            <button class="btn-primary login-submit" type="submit"><i class="fa-solid fa-paper-plane"></i> Send reset link</button>
+            <p class="login-signup-copy"><a href="#" data-auth-panel="login">Back to login</a></p>
+          </form>
+
+          <form method="post" class="auth-panel <?= $mode === 'reset' ? 'active' : '' ?>" data-panel="reset">
+            <input type="hidden" name="action" value="reset">
+            <input type="hidden" name="token" value="<?= htmlspecialchars($resetToken) ?>">
+            <h1>Choose new password</h1>
+            <label>New password</label>
+            <div class="password-field">
+              <input name="password" type="password" data-strength-source required>
+              <button type="button" data-toggle-password>Show</button>
+            </div>
+            <div class="password-strength" data-strength-meter><span></span></div>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['reset_password'] ?? '') ?></div>
+
+            <label>Confirm new password</label>
+            <div class="password-field">
+              <input name="confirm_password" type="password" required>
+              <button type="button" data-toggle-password>Show</button>
+            </div>
+            <div class="field-error"><?= htmlspecialchars($fieldErrors['reset_confirm'] ?? '') ?></div>
+            <button class="btn-primary login-submit" type="submit"><i class="fa-solid fa-key"></i> Update password</button>
+          </form>
+
+          <div class="portal-security-strip">
+            <span><i class="fa-solid fa-shield"></i> Rate limited</span>
+            <span><i class="fa-solid fa-cookie-bite"></i> Remember tokens</span>
+            <span><i class="fa-solid fa-user-lock"></i> Role routed</span>
+          </div>
         </div>
-      </aside>
+      </section>
     </main>
   <?php else: ?>
     <nav class="site-nav">
       <a class="nav-left" href="index.php">
-        <img src="../../public/assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend" class="logo">
+        <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend" class="logo">
         <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Secure portal</p></div>
       </a>
       <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
@@ -653,83 +759,130 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
         <li><a href="blog.php">Blog</a></li>
         <li><a href="track.php">Track</a></li>
         <li><a class="active" href="account.php">Account</a></li>
-        <li><a href="account.php?logout=1">Logout</a></li>
+        <li><a class="nav-btn logout-nav-btn" href="account.php?logout=1"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a></li>
       </ul>
     </nav>
 
-    <main class="section alt">
+    <main class="account-dashboard section alt">
       <div class="section-inner">
         <?php if ($notice !== ''): ?>
           <div class="php-banner <?= htmlspecialchars($noticeTone) ?>"><?= htmlspecialchars($notice) ?></div>
         <?php endif; ?>
 
         <?php if ($accountUser): ?>
-          <p class="section-kicker"><i class="fa-solid fa-user"></i> Customer dashboard</p>
-          <h1 class="section-title">Welcome, <?= htmlspecialchars((string) $accountUser['name']) ?>.</h1>
-          <p class="section-copy">Track repair orders, confirm payments, browse products, and review order history.</p>
+          <section class="account-hero">
+            <div>
+              <p class="section-kicker"><i class="fa-solid fa-user"></i> Customer dashboard</p>
+              <h1 class="section-title">Welcome, <?= htmlspecialchars((string) $accountUser['name']) ?>.</h1>
+              <p class="section-copy">Track repair orders, confirm payments, browse products, and review order history.</p>
+              <div class="account-hero-metrics" aria-label="Account summary">
+                <div><strong><?= count($customerRepairs) ?></strong><span>Repairs</span></div>
+                <div><strong><?= count($customerOrders) ?></strong><span>Orders</span></div>
+                <div><strong><?= count($customerPayments) ?></strong><span>Payments</span></div>
+              </div>
+              <div class="account-actions">
+                <a class="btn-primary" href="repair.php"><i class="fa-solid fa-screwdriver-wrench"></i> Book repair</a>
+                <a class="btn-light" href="accessories.php"><i class="fa-solid fa-bag-shopping"></i> Shop accessories</a>
+                <a class="btn-light" href="track.php"><i class="fa-solid fa-location-dot"></i> Track status</a>
+              </div>
+            </div>
+            <div class="account-identity-card">
+              <span class="account-avatar"><?= htmlspecialchars(strtoupper(substr((string) $accountUser['name'], 0, 1))) ?></span>
+              <div>
+                <strong><?= htmlspecialchars((string) $accountUser['email']) ?></strong>
+                <p>Customer portal</p>
+              </div>
+            </div>
+          </section>
 
           <div class="account-grid">
-            <article class="dashboard-card wide">
-              <div class="category-pills">
-                <a class="pill active" href="track.php">Track repairs</a>
-                <a class="pill" href="accessories.php">Browse products</a>
-                <a class="pill" href="#payments">View payments</a>
-                <a class="pill" href="#settings">Account settings</a>
+            <article class="dashboard-card wide quick-actions-card">
+              <div class="account-action-grid">
+                <a href="track.php"><i class="fa-solid fa-location-dot"></i><span>Track repairs</span></a>
+                <a href="accessories.php"><i class="fa-solid fa-bag-shopping"></i><span>Browse products</span></a>
+                <a href="#payments"><i class="fa-solid fa-credit-card"></i><span>View payments</span></a>
+                <a href="#settings"><i class="fa-solid fa-user-gear"></i><span>Account settings</span></a>
               </div>
             </article>
 
             <article class="dashboard-card">
-              <h3>Active repairs</h3>
+              <div class="dashboard-card-heading"><span><i class="fa-solid fa-screwdriver-wrench"></i></span><h3>Active repairs</h3></div>
               <?php if ($customerRepairs === []): ?>
                 <p>No repair bookings linked to this account yet.</p>
                 <a class="btn-ghost" href="repair.php">Book a repair</a>
               <?php else: ?>
+                <div class="account-list">
                 <?php foreach ($customerRepairs as $repair): ?>
                   <p><strong>#<?= (int) $repair['id'] ?> <?= htmlspecialchars((string) $repair['device_model']) ?></strong><br><?= htmlspecialchars((string) $repair['repair_type']) ?> - <?= htmlspecialchars((string) $repair['status']) ?></p>
                 <?php endforeach; ?>
+                </div>
               <?php endif; ?>
             </article>
 
             <article class="dashboard-card">
-              <h3>Recent purchases</h3>
+              <div class="dashboard-card-heading"><span><i class="fa-solid fa-bag-shopping"></i></span><h3>Recent purchases</h3></div>
               <?php if ($customerOrders === []): ?>
                 <p>No purchases yet.</p>
                 <a class="btn-ghost" href="accessories.php">Start shopping</a>
               <?php else: ?>
+                <div class="account-list">
                 <?php foreach ($customerOrders as $order): ?>
                   <p><strong><?= htmlspecialchars((string) $order['order_number']) ?></strong><br><?= htmlspecialchars((string) $order['status']) ?> - KES <?= number_format((float) $order['grand_total'], 2) ?></p>
                 <?php endforeach; ?>
+                </div>
               <?php endif; ?>
             </article>
 
             <article class="dashboard-card" id="payments">
-              <h3>Payments</h3>
+              <div class="dashboard-card-heading"><span><i class="fa-solid fa-credit-card"></i></span><h3>Payments</h3></div>
               <?php if ($customerPayments === []): ?>
                 <p>No pending payments. M-Pesa and card receipts will appear here.</p>
               <?php else: ?>
+                <div class="account-list">
                 <?php foreach ($customerPayments as $payment): ?>
                   <p><strong><?= htmlspecialchars((string) $payment['payment_method']) ?></strong><br><?= htmlspecialchars((string) $payment['status']) ?> - <?= htmlspecialchars((string) $payment['currency']) ?> <?= number_format((float) $payment['amount'], 2) ?></p>
                 <?php endforeach; ?>
+                </div>
               <?php endif; ?>
             </article>
 
             <article class="dashboard-card" id="settings">
-              <h3>Account settings</h3>
+              <div class="dashboard-card-heading"><span><i class="fa-solid fa-user-gear"></i></span><h3>Account settings</h3></div>
               <p>Name, phone number, saved addresses, and password changes will live here next.</p>
             </article>
           </div>
         <?php endif; ?>
 
         <?php if ($adminUser): ?>
-          <p class="section-kicker"><i class="fa-solid fa-user-gear"></i> Admin dashboard</p>
-          <h1 class="section-title">Operations control for <?= htmlspecialchars((string) $adminUser['name']) ?>.</h1>
-          <p class="section-copy">Manage repairs, inventory, orders, payments, customers, and role permissions.</p>
+          <section class="account-hero admin-hero">
+            <div>
+              <p class="section-kicker"><i class="fa-solid fa-user-gear"></i> Admin dashboard</p>
+              <h1 class="section-title">Welcome, <?= htmlspecialchars((string) $adminUser['name']) ?>.</h1>
+              <p class="section-copy">Manage repairs, inventory, orders, payments, customers, and role permissions.</p>
+              <div class="account-hero-metrics" aria-label="Admin summary">
+                <div><strong><?= number_format($adminStats['pending_repairs']) ?></strong><span>Repairs</span></div>
+                <div><strong><?= number_format($adminStats['orders_today']) ?></strong><span>Orders today</span></div>
+                <div><strong><?= number_format($adminStats['low_stock']) ?></strong><span>Low stock</span></div>
+              </div>
+              <div class="account-actions">
+                <a class="btn-primary" href="admin_repairs.php"><i class="fa-solid fa-screwdriver-wrench"></i> Repairs</a>
+                <a class="btn-light" href="admin_inventory.php"><i class="fa-solid fa-boxes-stacked"></i> Inventory</a>
+              </div>
+            </div>
+            <div class="account-identity-card">
+              <span class="account-avatar"><?= htmlspecialchars(strtoupper(substr((string) $adminUser['name'], 0, 1))) ?></span>
+              <div>
+                <strong><?= htmlspecialchars((string) $adminUser['email']) ?></strong>
+                <p><?= htmlspecialchars((string) $adminUser['role']) ?></p>
+              </div>
+            </div>
+          </section>
 
           <div class="account-grid">
-            <article class="dashboard-card"><h3>Repairs in progress</h3><p><strong><?= number_format($adminStats['pending_repairs']) ?></strong> active repairs</p><a class="btn-dark" href="admin_repairs.php">Manage repairs</a></article>
-            <article class="dashboard-card"><h3>Orders today</h3><p><strong><?= number_format($adminStats['orders_today']) ?></strong> orders recorded today</p></article>
-            <article class="dashboard-card"><h3>Payments pending</h3><p><strong><?= number_format($adminStats['pending_payments']) ?></strong> payments need confirmation</p></article>
-            <article class="dashboard-card"><h3>Low stock alerts</h3><p><strong><?= number_format($adminStats['low_stock']) ?></strong> inventory items are low</p><a class="btn-dark" href="admin_inventory.php">Manage inventory</a></article>
+            <article class="dashboard-card stat-card"><span><i class="fa-solid fa-screwdriver-wrench"></i></span><h3>Repairs in progress</h3><p><strong><?= number_format($adminStats['pending_repairs']) ?></strong> active repairs</p><a class="btn-dark" href="admin_repairs.php">Manage repairs</a></article>
+            <article class="dashboard-card stat-card"><span><i class="fa-solid fa-receipt"></i></span><h3>Orders today</h3><p><strong><?= number_format($adminStats['orders_today']) ?></strong> orders recorded today</p></article>
+            <article class="dashboard-card stat-card"><span><i class="fa-solid fa-credit-card"></i></span><h3>Payments pending</h3><p><strong><?= number_format($adminStats['pending_payments']) ?></strong> payments need confirmation</p></article>
+            <article class="dashboard-card stat-card"><span><i class="fa-solid fa-triangle-exclamation"></i></span><h3>Low stock alerts</h3><p><strong><?= number_format($adminStats['low_stock']) ?></strong> inventory items are low</p><a class="btn-dark" href="admin_inventory.php">Manage inventory</a></article>
             <article class="dashboard-card wide">
               <h3>Admin navigation</h3>
               <div class="category-pills">
@@ -760,6 +913,54 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
         });
         document.querySelectorAll('.auth-tabs [data-auth-panel]').forEach((tab) => {
           tab.classList.toggle('active', tab.dataset.authPanel === target);
+        });
+      });
+    });
+
+    const intentContent = {
+      customer: {
+        title: 'Welcome back',
+        copy: 'Sign in to track repairs, orders, payments, warranties, and saved service history.',
+        note: 'Admin accounts are routed automatically by role after login.',
+        email: 'you@example.com',
+        mode: 'Customer service hub',
+      },
+      admin: {
+        title: 'Open admin workspace',
+        copy: 'Use your staff email to review repair queues, inventory alerts, orders, and payments.',
+        note: 'Only staff roles can enter admin dashboards. Customer accounts remain in the customer portal.',
+        email: 'admin@mobimend.co.ke',
+        mode: 'Operations command',
+      },
+    };
+
+    function setLoginIntent(intent) {
+      const content = intentContent[intent] || intentContent.customer;
+      document.querySelectorAll('[data-login-intent]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.loginIntent === intent);
+      });
+      document.querySelectorAll('[data-flow-card]').forEach((card) => {
+        card.classList.toggle('active', card.dataset.flowCard === intent);
+      });
+      const title = document.querySelector('[data-login-title]');
+      const copy = document.querySelector('[data-login-copy]');
+      const note = document.querySelector('[data-login-note]');
+      const email = document.querySelector('[data-login-email]');
+      const modeLabel = document.querySelector('[data-portal-mode-label]');
+      const signup = document.querySelector('[data-customer-signup-copy]');
+      if (title) title.textContent = content.title;
+      if (copy) copy.textContent = content.copy;
+      if (note) note.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${content.note}`;
+      if (email) email.placeholder = content.email;
+      if (modeLabel) modeLabel.textContent = content.mode;
+      if (signup) signup.hidden = intent === 'admin';
+    }
+
+    document.querySelectorAll('[data-login-intent]').forEach((button) => {
+      button.addEventListener('click', () => {
+        setLoginIntent(button.dataset.loginIntent || 'customer');
+        document.querySelectorAll('[data-panel]').forEach((panel) => {
+          panel.classList.toggle('active', panel.dataset.panel === 'login');
         });
       });
     });

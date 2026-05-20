@@ -10,7 +10,7 @@
 </head>
 <body>
   <nav class="site-nav">
-    <a class="nav-left" href="index.php"><img src="../../public/assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend" class="logo"><div class="brand"><h1>MOBIMEND</h1><p class="tagline">Tracking</p></div></a>
+    <a class="nav-left" href="index.php"><img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend" class="logo"><div class="brand"><h1>MOBIMEND</h1><p class="tagline">Tracking</p></div></a>
     <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
     <ul class="nav-links" id="nav-links">
       <li><a href="index.php">Home</a></li><li><a href="repair.php">Repair</a></li><li><a href="accessories.php">Shop</a></li><li><a href="wholesale.php">Wholesale</a></li><li><a href="blog.php">Blog</a></li><li><a class="active" href="track.php">Track</a></li><li><a href="account.php">Account</a></li>

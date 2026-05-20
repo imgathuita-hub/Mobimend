@@ -131,7 +131,7 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
 <body>
   <nav class="site-nav">
     <a class="nav-left" href="index.php">
-      <img src="../../public/assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
+      <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
       <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Wholesale desk</p></div>
     </a>
     <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>

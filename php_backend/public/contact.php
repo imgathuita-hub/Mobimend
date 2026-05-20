@@ -11,7 +11,7 @@
 <body>
   <nav class="site-nav">
     <a class="nav-left" href="index.php">
-      <img src="../../public/assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
+      <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
       <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Support desk</p></div>
     </a>
     <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
