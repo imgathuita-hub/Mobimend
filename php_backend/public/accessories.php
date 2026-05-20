@@ -11,7 +11,7 @@
 <body>
   <nav class="site-nav">
     <a class="nav-left" href="index.php">
-      <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
+      <img src="../../public/assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
       <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Accessories shop</p></div>
     </a>
     <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
@@ -23,6 +23,7 @@
       <li><a href="blog.php">Blog</a></li>
       <li><a href="track.php">Track</a></li>
       <li><a href="account.php">Account</a></li>
+      
     </ul>
   </nav>
 
@@ -35,7 +36,7 @@
 
         <div class="shop-toolbar">
           <input id="productSearch" type="search" placeholder="Search cases, chargers, protectors, earbuds...">
-          <button class="btn-dark cart-count-button" type="button" data-open-cart><i class="fa-solid fa-cart-shopping"></i> View cart <span id="cartCount">0</span></button>
+          <button class="btn-dark" type="button" data-open-cart><i class="fa-solid fa-cart-shopping"></i> View cart</button>
         </div>
         <div class="category-pills">
           <button class="pill active" type="button" data-category="All">All</button>
