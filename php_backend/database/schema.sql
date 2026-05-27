@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS products (
   retail_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   minimum_wholesale_quantity INT UNSIGNED NOT NULL DEFAULT 1,
+  catalog_channel ENUM('shop', 'wholesale', 'both') NOT NULL DEFAULT 'shop',
   status ENUM('draft', 'active', 'out_of_stock', 'archived') NOT NULL DEFAULT 'active',
   media_url VARCHAR(512) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

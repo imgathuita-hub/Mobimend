@@ -2,18 +2,96 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
+session_start();
+
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
 use Mobimend\Services\InventoryLedger;
 
 $pdo = Database::connection();
-$message = '';
-$tone = 'info';
+$message = (string) ($_GET['message'] ?? '');
+$tone = (string) ($_GET['tone'] ?? 'info');
 $selectedBrand = trim((string) ($_GET['brand'] ?? ''));
+$_SESSION['wholesale_cart'] ??= [];
+
+function wholesale_product_column_exists(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = "products"
+           AND COLUMN_NAME = :column'
+    );
+    $stmt->execute(['column' => $column]);
+    $cache[$column] = (int) $stmt->fetchColumn() > 0;
+    return $cache[$column];
+}
+
+function wholesale_redirect(string $message, string $tone = 'success'): never
+{
+    header('Location: wholesale.php?message=' . urlencode($message) . '&tone=' . urlencode($tone) . '#cart');
+    exit;
+}
+
+$hasCatalogChannel = wholesale_product_column_exists($pdo, 'catalog_channel');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $quantities = $_POST['quantities'] ?? [];
+    $action = (string) ($_POST['action'] ?? 'checkout');
+
+    if ($action === 'add_cart') {
+        $itemId = (int) ($_POST['item_id'] ?? 0);
+        $quantity = max(1, (int) ($_POST['quantity'] ?? 1));
+        $channelFilter = $hasCatalogChannel ? ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)' : '';
+        $stmt = $pdo->prepare(
+            'SELECT ii.*, p.minimum_wholesale_quantity
+             FROM inventory_items ii
+             LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
+             LEFT JOIN products p ON p.id = pv.product_id
+             WHERE ii.id = :id AND ii.quantity > 0' . $channelFilter . '
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $itemId]);
+        $item = $stmt->fetch();
+        if (!$item) {
+            wholesale_redirect('That part is not available for wholesale.', 'error');
+        }
+        $moq = max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5));
+        $quantity = max($moq, $quantity);
+        $_SESSION['wholesale_cart'][$itemId] = min((int) $item['quantity'], (int) ($_SESSION['wholesale_cart'][$itemId] ?? 0) + $quantity);
+        wholesale_redirect((string) $item['part_type'] . ' added to wholesale cart.');
+    }
+
+    if ($action === 'update_cart') {
+        $quantities = $_POST['cart_quantities'] ?? [];
+        $nextCart = [];
+        if (is_array($quantities)) {
+            foreach ($quantities as $itemId => $quantity) {
+                $itemId = (int) $itemId;
+                $quantity = max(0, (int) $quantity);
+                if ($itemId > 0 && $quantity > 0) {
+                    $nextCart[$itemId] = $quantity;
+                }
+            }
+        }
+        $_SESSION['wholesale_cart'] = $nextCart;
+        wholesale_redirect('Wholesale cart updated.');
+    }
+
+    if ($action === 'remove_cart') {
+        $itemId = (int) ($_POST['item_id'] ?? 0);
+        unset($_SESSION['wholesale_cart'][$itemId]);
+        wholesale_redirect('Item removed from wholesale cart.');
+    }
+
+    $quantities = $_SESSION['wholesale_cart'] ?? [];
     $selectedItems = [];
     $buyerName = trim((string) ($_POST['buyer_name'] ?? ''));
     $buyerPhone = trim((string) ($_POST['buyer_phone'] ?? ''));
@@ -50,12 +128,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lines = [];
 
             foreach ($selectedItems as $itemId => $quantity) {
+                $channelFilter = $hasCatalogChannel ? ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)' : '';
                 $stmt = $pdo->prepare(
                     'SELECT ii.*, pv.product_id, pv.sku, pv.stock_quantity, p.name AS product_name, p.minimum_wholesale_quantity
                      FROM inventory_items ii
                      LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
                      LEFT JOIN products p ON p.id = pv.product_id
-                     WHERE ii.id = :id
+                     WHERE ii.id = :id' . $channelFilter . '
                      FOR UPDATE'
                 );
                 $stmt->execute(['id' => $itemId]);
@@ -205,6 +284,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $pdo->commit();
+            $_SESSION['wholesale_cart'] = [];
             $message = 'Wholesale order ' . $orderNumber . ' created for ' . $updatedCount . ' units. Total value: KES ' . number_format($totalRevenue, 2) . '.';
             $tone = 'success';
         } catch (Throwable $exception) {
@@ -217,15 +297,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$brandsStmt = $pdo->query('SELECT DISTINCT brand FROM inventory_items ORDER BY brand ASC');
+$brandChannelJoin = 'LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id LEFT JOIN products p ON p.id = pv.product_id';
+$brandChannelWhere = $hasCatalogChannel ? ' WHERE p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL' : '';
+$brandsStmt = $pdo->query('SELECT DISTINCT ii.brand FROM inventory_items ii ' . $brandChannelJoin . $brandChannelWhere . ' ORDER BY ii.brand ASC');
 $brands = array_map(static fn (array $row): string => (string) $row['brand'], $brandsStmt->fetchAll());
 
-$sql = 'SELECT ii.*, p.minimum_wholesale_quantity, pv.sku
+$catalogChannelSelect = $hasCatalogChannel ? 'p.catalog_channel' : '"wholesale" AS catalog_channel';
+$sql = 'SELECT ii.*, p.minimum_wholesale_quantity, p.media_url, p.name AS product_name, ' . $catalogChannelSelect . ', pv.sku
         FROM inventory_items ii
         LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
         LEFT JOIN products p ON p.id = pv.product_id
         WHERE ii.quantity > 0';
 $params = [];
+if ($hasCatalogChannel) {
+    $sql .= ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)';
+}
 if ($selectedBrand !== '') {
     $sql .= ' AND ii.brand = :brand';
     $params['brand'] = $selectedBrand;
@@ -237,6 +323,37 @@ $items = $itemsStmt->fetchAll();
 
 $totalUnits = array_reduce($items, static fn (int $sum, array $item): int => $sum + (int) $item['quantity'], 0);
 $activeBrands = count(array_unique(array_map(static fn (array $item): string => (string) $item['brand'], $items)));
+$wholesaleCart = is_array($_SESSION['wholesale_cart'] ?? null) ? $_SESSION['wholesale_cart'] : [];
+$cartItems = [];
+$cartTotal = 0.0;
+if ($wholesaleCart !== []) {
+    $ids = array_values(array_filter(array_map('intval', array_keys($wholesaleCart)), static fn (int $id): bool => $id > 0));
+    if ($ids !== []) {
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $channelFilter = $hasCatalogChannel ? ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)' : '';
+        $stmt = $pdo->prepare(
+            'SELECT ii.*, p.minimum_wholesale_quantity, p.media_url, p.name AS product_name, pv.sku
+             FROM inventory_items ii
+             LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
+             LEFT JOIN products p ON p.id = pv.product_id
+             WHERE ii.id IN (' . $placeholders . ') AND ii.quantity > 0' . $channelFilter
+        );
+        $stmt->execute($ids);
+        foreach ($stmt->fetchAll() as $row) {
+            $moq = max(1, (int) ($row['minimum_wholesale_quantity'] ?? 5));
+            $quantity = min(max($moq, (int) ($wholesaleCart[(int) $row['id']] ?? $moq)), max(0, (int) $row['quantity']));
+            if ($quantity < $moq) {
+                continue;
+            }
+            $unitPrice = (float) $row['wholesale_price'] > 0 ? (float) $row['wholesale_price'] : (float) $row['sell_price'];
+            $row['cart_quantity'] = $quantity;
+            $row['cart_unit_price'] = $unitPrice;
+            $row['cart_line_total'] = $unitPrice * $quantity;
+            $cartTotal += (float) $row['cart_line_total'];
+            $cartItems[] = $row;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -303,12 +420,40 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
             <span>20+ units: distributor</span>
           </div>
           <a class="btn-ghost" href="contact.php" style="margin-top: 14px;">Request special pricing</a>
+          <section class="cart-panel wholesale-cart-panel visible-cart-panel" id="cart">
+            <div class="cart-panel-head">
+              <div>
+                <p class="section-kicker"><i class="fa-solid fa-cart-flatbed"></i> Bulk cart</p>
+                <h2>Selected parts</h2>
+              </div>
+              <strong>KES <?= number_format($cartTotal, 2) ?></strong>
+            </div>
+            <?php if ($cartItems === []): ?>
+              <p class="muted">Your wholesale cart is empty. Add MOQ quantities from the catalog.</p>
+            <?php else: ?>
+              <form method="post" action="#cart" class="cart-list">
+                <input type="hidden" name="action" value="update_cart">
+                <?php foreach ($cartItems as $cartItem): ?>
+                  <?php $moq = max(1, (int) ($cartItem['minimum_wholesale_quantity'] ?? 5)); ?>
+                  <div class="cart-line no-image">
+                    <div>
+                      <strong><?= htmlspecialchars((string) $cartItem['brand']) ?> <?= htmlspecialchars((string) $cartItem['model']) ?> <?= htmlspecialchars((string) $cartItem['part_type']) ?></strong>
+                      <span>MOQ <?= $moq ?> - KES <?= number_format((float) $cartItem['cart_unit_price'], 2) ?></span>
+                    </div>
+                    <input type="number" min="0" max="<?= (int) $cartItem['quantity'] ?>" name="cart_quantities[<?= (int) $cartItem['id'] ?>]" value="<?= (int) $cartItem['cart_quantity'] ?>">
+                    <strong>KES <?= number_format((float) $cartItem['cart_line_total'], 2) ?></strong>
+                  </div>
+                <?php endforeach; ?>
+                <button class="btn-dark" type="submit">Update wholesale cart</button>
+              </form>
+            <?php endif; ?>
+          </section>
         </aside>
 
         <section class="wholesale-card">
           <h2>Wholesale catalog</h2>
           <p>Select quantities. MOQ warnings can later become enforced pricing logic.</p>
-          <form method="post" action="#live-catalog">
+          <div>
             <table class="wholesale-table">
               <thead>
                 <tr>
@@ -317,7 +462,7 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
                   <th>Available</th>
                   <th>Unit price</th>
                   <th>MOQ</th>
-                  <th>Qty</th>
+                  <th>Add</th>
                 </tr>
               </thead>
               <tbody>
@@ -326,18 +471,28 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
                 <?php endif; ?>
                 <?php foreach ($items as $item): ?>
                   <tr>
-                    <td><strong><?= htmlspecialchars((string) $item['part_type']) ?></strong><br><span class="status-pill">Quality checked</span></td>
+                    <td>
+                      <strong><?= htmlspecialchars((string) $item['part_type']) ?></strong><br><span class="status-pill">Quality checked</span>
+                    </td>
                     <td><?= htmlspecialchars((string) $item['brand']) ?><br><small><?= htmlspecialchars((string) $item['model']) ?></small></td>
                     <td><?= (int) $item['quantity'] ?></td>
                     <td>KES <?= number_format((float) ($item['wholesale_price'] > 0 ? $item['wholesale_price'] : $item['sell_price']), 2) ?></td>
                     <td><span class="status-pill"><?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>+</span></td>
-                    <td><input type="number" min="0" max="<?= (int) $item['quantity'] ?>" name="quantities[<?= (int) $item['id'] ?>]" placeholder="0"></td>
+                    <td>
+                      <form method="post" action="#cart" class="wholesale-add-form">
+                        <input type="hidden" name="action" value="add_cart">
+                        <input type="hidden" name="item_id" value="<?= (int) $item['id'] ?>">
+                        <input type="number" min="<?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>" max="<?= (int) $item['quantity'] ?>" name="quantity" value="<?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>">
+                        <button class="btn-dark" type="submit">Add</button>
+                      </form>
+                    </td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
             </table>
 
-            <div class="checkout-flow">
+            <form method="post" action="#live-catalog" class="checkout-flow">
+              <input type="hidden" name="action" value="checkout">
               <div class="payment-card">
                 <h3>Buyer details</h3>
                 <div class="form-grid" style="margin-top: 16px;">
@@ -358,10 +513,10 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
                 <label class="payment-method"><input type="radio" name="payment_method" value="bank_transfer"> Bank transfer</label>
                 <label class="payment-method"><input type="radio" name="payment_method" value="cash"> Cash on pickup</label>
                 <p>M-Pesa, bank transfer, and cash payments are saved as pending records for admin reconciliation.</p>
-                <button class="btn-primary" type="submit" style="width: 100%; margin-top: 12px;">Submit wholesale checkout</button>
+                <button class="btn-primary" type="submit" style="width: 100%; margin-top: 12px;" <?= $cartItems === [] ? 'disabled' : '' ?>>Submit wholesale checkout</button>
               </div>
-            </div>
-          </form>
+            </form>
+          </div>
         </section>
       </div>
     </div>

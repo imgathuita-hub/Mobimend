@@ -20,6 +20,75 @@ if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, tr
 $message = (string) ($_GET['message'] ?? '');
 $tone = (string) ($_GET['tone'] ?? 'info');
 
+function product_column_exists(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = "products"
+           AND COLUMN_NAME = :column'
+    );
+    $stmt->execute(['column' => $column]);
+    $cache[$column] = (int) $stmt->fetchColumn() > 0;
+    return $cache[$column];
+}
+
+function upload_product_image(array $file): string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return '';
+    }
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Product image upload failed.');
+    }
+    if ((int) ($file['size'] ?? 0) > 5 * 1024 * 1024) {
+        throw new RuntimeException('Product image must be 5MB or smaller.');
+    }
+
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($tmpName) ?: '';
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+    if (!isset($extensions[$mime])) {
+        throw new RuntimeException('Upload a JPG, PNG, WebP, or GIF product image.');
+    }
+
+    $uploadDir = __DIR__ . '/uploads/products';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0775, true);
+    }
+    if (!is_dir($uploadDir) || !is_writable($uploadDir)) {
+        throw new RuntimeException('Product upload directory is not writable.');
+    }
+
+    $filename = date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extensions[$mime];
+    $destination = $uploadDir . '/' . $filename;
+    if (!move_uploaded_file($tmpName, $destination)) {
+        throw new RuntimeException('Could not save the uploaded product image.');
+    }
+
+    return 'uploads/products/' . $filename;
+}
+
+function product_image_url(?string $mediaUrl): string
+{
+    $mediaUrl = trim((string) $mediaUrl);
+    return $mediaUrl !== '' ? $mediaUrl : 'assets/LOGO FINAL MOBIMEND WH BG.png';
+}
+
+$hasCatalogChannel = product_column_exists($pdo, 'catalog_channel');
+
 if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
     $password = (string) ($_POST['password'] ?? '');
@@ -95,16 +164,22 @@ if ($user && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $minimumWholesaleQuantity = max(1, (int) ($_POST['minimum_wholesale_quantity'] ?? 5));
             $variantName = trim((string) ($_POST['variant_name'] ?? 'Default'));
             $qualityGrade = trim((string) ($_POST['quality_grade'] ?? 'Standard'));
+            $catalogChannel = (string) ($_POST['catalog_channel'] ?? 'shop');
+            if (!in_array($catalogChannel, ['shop', 'wholesale', 'both'], true)) {
+                $catalogChannel = 'shop';
+            }
+            $uploadedMediaUrl = upload_product_image($_FILES['product_image'] ?? []);
+            $mediaUrl = $uploadedMediaUrl !== '' ? $uploadedMediaUrl : trim((string) ($_POST['media_url'] ?? ''));
 
-            $stmt = $pdo->prepare(
-                'INSERT INTO products
-                 (category_id, name, slug, sku, brand, compatible_brand, compatible_model, description,
-                  retail_price, wholesale_price, minimum_wholesale_quantity, status, media_url)
-                 VALUES
-                 (:category_id, :name, :slug, :sku, :brand, :compatible_brand, :compatible_model, :description,
-                  :retail_price, :wholesale_price, :minimum_wholesale_quantity, :status, :media_url)'
-            );
-            $stmt->execute([
+            $productColumns = [
+                'category_id', 'name', 'slug', 'sku', 'brand', 'compatible_brand', 'compatible_model', 'description',
+                'retail_price', 'wholesale_price', 'minimum_wholesale_quantity',
+            ];
+            $productValues = [
+                ':category_id', ':name', ':slug', ':sku', ':brand', ':compatible_brand', ':compatible_model', ':description',
+                ':retail_price', ':wholesale_price', ':minimum_wholesale_quantity',
+            ];
+            $productParams = [
                 'category_id' => $categoryId > 0 ? $categoryId : null,
                 'name' => $name,
                 'slug' => slugify($name . '-' . $sku),
@@ -116,9 +191,26 @@ if ($user && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'retail_price' => $retailPrice,
                 'wholesale_price' => $wholesalePrice,
                 'minimum_wholesale_quantity' => $minimumWholesaleQuantity,
+            ];
+            if ($hasCatalogChannel) {
+                $productColumns[] = 'catalog_channel';
+                $productValues[] = ':catalog_channel';
+                $productParams['catalog_channel'] = $catalogChannel;
+            }
+            $productColumns[] = 'status';
+            $productColumns[] = 'media_url';
+            $productValues[] = ':status';
+            $productValues[] = ':media_url';
+            $productParams += [
                 'status' => $stockQuantity > 0 ? 'active' : 'out_of_stock',
-                'media_url' => trim((string) ($_POST['media_url'] ?? '')),
-            ]);
+                'media_url' => $mediaUrl,
+            ];
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO products (' . implode(', ', $productColumns) . ')
+                 VALUES (' . implode(', ', $productValues) . ')'
+            );
+            $stmt->execute($productParams);
             $productId = (int) $pdo->lastInsertId();
 
             $stmt = $pdo->prepare(
@@ -268,6 +360,51 @@ if ($user && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             redirect_with_message('admin_products.php', 'Stock adjusted.');
         }
+
+        if ($action === 'update_product') {
+            $productId = (int) ($_POST['product_id'] ?? 0);
+            if ($productId <= 0) {
+                throw new RuntimeException('Choose a product to update.');
+            }
+
+            $categoryId = (int) ($_POST['category_id'] ?? 0);
+            $status = (string) ($_POST['status'] ?? 'active');
+            if (!in_array($status, ['draft', 'active', 'out_of_stock', 'archived'], true)) {
+                $status = 'active';
+            }
+            $catalogChannel = (string) ($_POST['catalog_channel'] ?? 'shop');
+            if (!in_array($catalogChannel, ['shop', 'wholesale', 'both'], true)) {
+                $catalogChannel = 'shop';
+            }
+
+            $uploadedMediaUrl = upload_product_image($_FILES['product_image'] ?? []);
+            $manualMediaUrl = trim((string) ($_POST['media_url'] ?? ''));
+            $mediaUrl = $uploadedMediaUrl !== '' ? $uploadedMediaUrl : $manualMediaUrl;
+
+            $columns = [
+                'category_id = :category_id',
+                'status = :status',
+                'updated_at = :updated_at',
+            ];
+            $params = [
+                'category_id' => $categoryId > 0 ? $categoryId : null,
+                'status' => $status,
+                'updated_at' => now(),
+                'id' => $productId,
+            ];
+            if ($hasCatalogChannel) {
+                $columns[] = 'catalog_channel = :catalog_channel';
+                $params['catalog_channel'] = $catalogChannel;
+            }
+            if ($mediaUrl !== '') {
+                $columns[] = 'media_url = :media_url';
+                $params['media_url'] = $mediaUrl;
+            }
+
+            $stmt = $pdo->prepare('UPDATE products SET ' . implode(', ', $columns) . ' WHERE id = :id');
+            $stmt->execute($params);
+            redirect_with_message('admin_products.php', 'Product catalog details updated.');
+        }
     } catch (Throwable $exception) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -284,8 +421,9 @@ $stats = ['products' => 0, 'units' => 0, 'low' => 0, 'value' => 0.0];
 $recentTransactions = [];
 
 if ($user) {
+    $catalogChannelSelect = $hasCatalogChannel ? 'p.catalog_channel' : '"shop" AS catalog_channel';
     $variants = $pdo->query(
-        'SELECT pv.*, p.name, p.sku AS product_sku, p.brand, p.compatible_model, p.minimum_wholesale_quantity, pc.name AS category_name
+        'SELECT pv.*, p.id AS product_id, p.name, p.sku AS product_sku, p.brand, p.compatible_model, p.minimum_wholesale_quantity, p.media_url, p.category_id, p.status, ' . $catalogChannelSelect . ', pc.name AS category_name
          FROM product_variants pv
          INNER JOIN products p ON p.id = pv.product_id
          LEFT JOIN product_categories pc ON pc.id = p.category_id
@@ -346,6 +484,12 @@ if ($user) {
     .stack { display: grid; gap: 12px; }
     .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .inline-form input { width: 110px; }
+    .catalog-product-cell { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .catalog-product-cell img { width: 58px; height: 58px; object-fit: cover; border-radius: 8px; background: #eef2f7; }
+    .catalog-thumb { width: 58px; height: 58px; object-fit: cover; border-radius: 8px; background: #eef2f7; margin-bottom: 8px; }
+    .catalog-edit-form { display: grid; gap: 8px; min-width: 230px; }
+    .catalog-edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .catalog-edit-form input[type="file"], .catalog-edit-form input[name="media_url"] { width: 100%; }
     @media (max-width: 900px) { .admin-grid, .stats-row, .form-grid { grid-template-columns: 1fr; } .form-grid .full { grid-column: auto; } }
   </style>
 </head>
@@ -410,8 +554,14 @@ if ($user) {
 
           <article class="admin-card">
             <h2>Add Product + First Variant</h2>
-            <form method="post" class="form-grid">
+            <p class="muted">Use Shop for accessories like chargers, cables, protectors, smart watches, and earpods. Use Wholesale for spare parts like LCDs, batteries, switches, cameras, and speakers.</p>
+            <form method="post" class="form-grid" enctype="multipart/form-data">
               <input type="hidden" name="action" value="save_product">
+              <select name="catalog_channel">
+                <option value="shop">Shop accessories</option>
+                <option value="wholesale">Wholesale spare parts</option>
+                <option value="both">Both shop and wholesale</option>
+              </select>
               <select name="category_id">
                 <option value="0">No category</option>
                 <?php foreach ($categories as $category): ?>
@@ -433,7 +583,8 @@ if ($user) {
               <input type="number" min="1" name="minimum_wholesale_quantity" value="5" placeholder="MOQ">
               <input type="number" min="0" name="stock_quantity" placeholder="Opening stock" required>
               <input type="number" min="1" name="low_stock_threshold" value="5" placeholder="Low stock threshold">
-              <input class="full" name="media_url" placeholder="Cloud media URL, e.g. Cloudinary or S3 HTTPS URL">
+              <input class="full" type="file" name="product_image" accept="image/jpeg,image/png,image/webp,image/gif">
+              <input class="full" name="media_url" placeholder="Optional image URL if you do not upload a file">
               <textarea class="full" name="description" rows="4" placeholder="Customer-facing description and compatibility notes"></textarea>
               <button class="full" type="submit">Create Product</button>
             </form>
@@ -451,17 +602,20 @@ if ($user) {
                     <th>Variant</th>
                     <th>Stock</th>
                     <th>Pricing</th>
+                    <th>Catalog</th>
                     <th>Adjust</th>
                   </tr>
                 </thead>
                 <tbody>
                   <?php if ($variants === []): ?>
-                    <tr><td colspan="5" class="muted">No products yet. Create a category and first product to activate the shop.</td></tr>
+                    <tr><td colspan="6" class="muted">No products yet. Create a category and first product to activate the shop.</td></tr>
                   <?php endif; ?>
                   <?php foreach ($variants as $variant): ?>
                     <tr>
                       <td>
+                        <img class="catalog-thumb" src="<?= htmlspecialchars(product_image_url($variant['media_url'] ?? null)) ?>" alt="<?= htmlspecialchars((string) $variant['name']) ?>">
                         <strong><?= htmlspecialchars((string) $variant['name']) ?></strong><br>
+                        <span class="muted"><?= htmlspecialchars(ucfirst((string) $variant['catalog_channel'])) ?> catalog</span><br>
                         <span class="muted"><?= htmlspecialchars((string) ($variant['category_name'] ?? 'Uncategorized')) ?> · <?= htmlspecialchars((string) $variant['brand']) ?></span>
                       </td>
                       <td><?= htmlspecialchars((string) $variant['variant_name']) ?><br><span class="muted"><?= htmlspecialchars((string) $variant['sku']) ?></span></td>
@@ -472,6 +626,33 @@ if ($user) {
                       <td>
                         Retail KES <?= number_format((float) $variant['retail_price'], 2) ?><br>
                         <span class="muted">Wholesale KES <?= number_format((float) $variant['wholesale_price'], 2) ?> · MOQ <?= (int) $variant['minimum_wholesale_quantity'] ?></span>
+                      </td>
+                      <td>
+                        <form method="post" class="catalog-edit-form" enctype="multipart/form-data">
+                          <input type="hidden" name="action" value="update_product">
+                          <input type="hidden" name="product_id" value="<?= (int) $variant['product_id'] ?>">
+                          <div class="catalog-edit-row">
+                            <select name="catalog_channel">
+                              <?php foreach (['shop' => 'Shop', 'wholesale' => 'Wholesale', 'both' => 'Both'] as $value => $label): ?>
+                                <option value="<?= $value ?>" <?= $variant['catalog_channel'] === $value ? 'selected' : '' ?>><?= $label ?></option>
+                              <?php endforeach; ?>
+                            </select>
+                            <select name="status">
+                              <?php foreach (['draft', 'active', 'out_of_stock', 'archived'] as $status): ?>
+                                <option value="<?= $status ?>" <?= $variant['status'] === $status ? 'selected' : '' ?>><?= ucfirst(str_replace('_', ' ', $status)) ?></option>
+                              <?php endforeach; ?>
+                            </select>
+                          </div>
+                          <select name="category_id">
+                            <option value="0">No category</option>
+                            <?php foreach ($categories as $category): ?>
+                              <option value="<?= (int) $category['id'] ?>" <?= (int) $variant['category_id'] === (int) $category['id'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $category['name']) ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                          <input type="file" name="product_image" accept="image/jpeg,image/png,image/webp,image/gif">
+                          <input name="media_url" placeholder="New image URL">
+                          <button type="submit">Save catalog</button>
+                        </form>
                       </td>
                       <td>
                         <form method="post" class="inline-form">
