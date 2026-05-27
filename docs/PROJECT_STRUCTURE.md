@@ -41,6 +41,7 @@ Customer pages:
 
 Admin pages:
 
+- `admin_dashboard.php`: primary operations cockpit for bookings, parts, low stock, payments, wholesale approvals, and blog prompts.
 - `admin_inventory.php`: stock, product, variant, and low-stock work.
 - `admin_orders.php`: order list, status updates, invoice printing.
 - `admin_repairs.php`: booking list, technician assignment, repair status.

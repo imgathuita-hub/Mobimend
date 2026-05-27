@@ -6,5 +6,5 @@ session_start();
 $_SESSION = [];
 session_destroy();
 
-header('Location: admin_inventory.php');
+header('Location: admin_dashboard.php');
 exit;

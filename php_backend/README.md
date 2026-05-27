@@ -5,6 +5,7 @@ This folder is the recommended main implementation path for the Mobimend PHP/MyS
 ## Pages
 
 - `public/setup_admin.php`
+- `public/admin_dashboard.php`
 - `public/admin_products.php`
 - `public/admin_orders.php`
 - `public/admin_inventory.php`
@@ -30,6 +31,7 @@ This folder is the recommended main implementation path for the Mobimend PHP/MyS
 
 ## Notes
 
+- `admin_dashboard.php` is the primary admin operations cockpit for repair bookings, parts blockers, low stock, payment verification, wholesale approvals, and content prompts.
 - `admin_products.php` manages categories, products, variants, cloud media URLs, stock adjustments, and synchronized inventory rows.
 - `admin_orders.php` manages retail/wholesale orders, payment status, fulfillment status, and revenue/profit visibility.
 - `admin_inventory.php` remains available for direct `inventory_items` edits, now transaction-wrapped with stock movement audit records.

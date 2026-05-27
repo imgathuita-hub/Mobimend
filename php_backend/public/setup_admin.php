@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $count === 0) {
             'role' => 'admin',
         ];
 
-        header('Location: admin_inventory.php');
+        header('Location: admin_dashboard.php');
         exit;
     }
 }
@@ -156,10 +156,10 @@ $count = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 <body>
   <div class="card">
     <h1>Admin Setup</h1>
-    <p>Create the first admin account for the direct PHP inventory page.</p>
+    <p>Create the first admin account for the Mobimend operations dashboard.</p>
 
     <?php if ($count > 0): ?>
-      <div class="banner info">An admin account already exists. Use <a href="admin_inventory.php">admin_inventory.php</a> to sign in.</div>
+      <div class="banner info">An admin account already exists. Use <a href="admin_dashboard.php">admin_dashboard.php</a> to sign in.</div>
     <?php else: ?>
       <?php if ($message !== ''): ?>
         <div class="banner <?= htmlspecialchars($tone) ?>"><?= htmlspecialchars($message) ?></div>
@@ -176,7 +176,7 @@ $count = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     <?php endif; ?>
 
     <div class="links">
-      <a href="admin_inventory.php">Go to Inventory Admin</a>
+      <a href="admin_dashboard.php">Go to Admin Dashboard</a>
     </div>
   </div>
 </body>

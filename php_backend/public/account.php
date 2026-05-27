@@ -898,7 +898,8 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
                 <div><strong><?= number_format($adminStats['low_stock']) ?></strong><span>Low stock</span></div>
               </div>
               <div class="account-actions">
-                <a class="btn-primary" href="admin_repairs.php"><i class="fa-solid fa-screwdriver-wrench"></i> Repairs</a>
+                <a class="btn-primary" href="admin_dashboard.php"><i class="fa-solid fa-gauge-high"></i> Operations</a>
+                <a class="btn-light" href="admin_repairs.php"><i class="fa-solid fa-screwdriver-wrench"></i> Repairs</a>
                 <a class="btn-light" href="admin_inventory.php"><i class="fa-solid fa-boxes-stacked"></i> Inventory</a>
               </div>
             </div>
@@ -912,17 +913,18 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
           </section>
 
           <div class="account-grid">
-            <article class="dashboard-card stat-card"><span><i class="fa-solid fa-screwdriver-wrench"></i></span><h3>Repairs in progress</h3><p><strong><?= number_format($adminStats['pending_repairs']) ?></strong> active repairs</p><a class="btn-dark" href="admin_repairs.php">Manage repairs</a></article>
+            <article class="dashboard-card stat-card"><span><i class="fa-solid fa-screwdriver-wrench"></i></span><h3>Repairs in progress</h3><p><strong><?= number_format($adminStats['pending_repairs']) ?></strong> active repairs</p><a class="btn-dark" href="admin_dashboard.php">Open operations</a></article>
             <article class="dashboard-card stat-card"><span><i class="fa-solid fa-receipt"></i></span><h3>Orders today</h3><p><strong><?= number_format($adminStats['orders_today']) ?></strong> orders recorded today</p></article>
             <article class="dashboard-card stat-card"><span><i class="fa-solid fa-credit-card"></i></span><h3>Payments pending</h3><p><strong><?= number_format($adminStats['pending_payments']) ?></strong> payments need confirmation</p></article>
             <article class="dashboard-card stat-card"><span><i class="fa-solid fa-triangle-exclamation"></i></span><h3>Low stock alerts</h3><p><strong><?= number_format($adminStats['low_stock']) ?></strong> inventory items are low</p><a class="btn-dark" href="admin_inventory.php">Manage inventory</a></article>
             <article class="dashboard-card wide">
               <h3>Admin navigation</h3>
               <div class="category-pills">
-                <a class="pill active" href="admin_repairs.php">Repairs</a>
+                <a class="pill active" href="admin_dashboard.php">Operations</a>
+                <a class="pill" href="admin_repairs.php">Repairs</a>
                 <a class="pill" href="admin_inventory.php">Inventory</a>
-                <span class="pill">Payments</span>
-                <span class="pill">Orders</span>
+                <a class="pill" href="admin_orders.php">Payments</a>
+                <a class="pill" href="admin_orders.php">Orders</a>
                 <?php if ((string) $adminUser['role'] === 'super_admin'): ?>
                   <span class="pill">User management</span>
                 <?php endif; ?>
