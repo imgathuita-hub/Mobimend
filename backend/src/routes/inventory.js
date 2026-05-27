@@ -1,11 +1,63 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const InventoryItem = require("../models/InventoryItem");
 const InventoryTransaction = require("../models/InventoryTransaction");
-const { requireAuth } = require("../middleware/auth");
+const StockMovement = require("../models/StockMovement");
+const InventoryAlertJob = require("../models/InventoryAlertJob");
+const { requireAuth, requireInventoryRole } = require("../middleware/auth");
 
 const router = express.Router();
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
+const inventoryWriteAuth = [requireAuth, requireInventoryRole];
+
+const buildMovement = ({ item, previousQuantity, newQuantity, quantityDelta, source, movementType, reason, userId }) => {
+  const absoluteQuantity = Math.abs(quantityDelta);
+  const unitBuyPrice = Number(item.buyPrice || 0);
+  const unitSellPrice = Number(item.sellPrice || 0);
+
+  return {
+    inventoryItemId: item._id,
+    movementType,
+    source,
+    quantityDelta,
+    previousQuantity,
+    newQuantity,
+    unitBuyPrice,
+    unitSellPrice,
+    totalCost: unitBuyPrice * absoluteQuantity,
+    totalRevenue: quantityDelta < 0 ? unitSellPrice * absoluteQuantity : 0,
+    profit: quantityDelta < 0 ? (unitSellPrice - unitBuyPrice) * absoluteQuantity : 0,
+    reason,
+    createdByUserId: userId || ""
+  };
+};
+
+const enqueueLowStockAlert = async ({ item, session }) => {
+  const reorderPoint = Number(item.reorderPoint || 0);
+
+  if (reorderPoint <= 0 || Number(item.quantity || 0) > reorderPoint) {
+    return;
+  }
+
+  await InventoryAlertJob.create(
+    [
+      {
+        inventoryItemId: item._id,
+        jobType: "low_stock",
+        payload: {
+          inventoryItemId: item._id,
+          brand: item.brand,
+          model: item.model,
+          partType: item.partType,
+          quantity: item.quantity,
+          reorderPoint
+        }
+      }
+    ],
+    { session }
+  );
+};
 
 // Public: list inventory (for frontend display)
 router.get("/", async (req, res) => {
@@ -90,8 +142,8 @@ router.get("/analytics/monthly", requireAuth, async (_req, res) => {
   });
 });
 
-// Public: checkout one or more inventory items and reduce stock
-router.post("/checkout", async (req, res) => {
+// Inventory write: checkout one or more inventory items and reduce stock.
+router.post("/checkout", ...inventoryWriteAuth, async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
 
   if (!items.length) {
@@ -118,102 +170,217 @@ router.post("/checkout", async (req, res) => {
   }
 
   const inventoryIds = [...new Set(requestedItems.map((item) => item.inventoryId))];
-  const inventoryItems = await InventoryItem.find({ _id: { $in: inventoryIds } });
-  const inventoryMap = new Map(inventoryItems.map((item) => [String(item._id), item]));
-  const availabilityErrors = [];
+  const session = await mongoose.startSession();
+  let result;
 
-  requestedItems.forEach((item) => {
-    const inventoryItem = inventoryMap.get(item.inventoryId);
-    if (!inventoryItem) {
-      availabilityErrors.push({ inventoryId: item.inventoryId, error: "Item not found" });
-      return;
-    }
+  try {
+    await session.withTransaction(async () => {
+      const inventoryItems = await InventoryItem.find({ _id: { $in: inventoryIds } }).session(session);
+      const inventoryMap = new Map(inventoryItems.map((item) => [String(item._id), item]));
+      const availabilityErrors = [];
 
-    if (inventoryItem.quantity < item.quantity) {
-      availabilityErrors.push({
-        inventoryId: item.inventoryId,
-        error: "Insufficient stock",
-        available: inventoryItem.quantity
+      requestedItems.forEach((item) => {
+        const inventoryItem = inventoryMap.get(item.inventoryId);
+        if (!inventoryItem) {
+          availabilityErrors.push({ inventoryId: item.inventoryId, error: "Item not found" });
+          return;
+        }
+
+        if (inventoryItem.quantity < item.quantity) {
+          availabilityErrors.push({
+            inventoryId: item.inventoryId,
+            error: "Insufficient stock",
+            available: inventoryItem.quantity
+          });
+        }
       });
-    }
-  });
 
-  if (availabilityErrors.length) {
-    return res.status(409).json({ error: "Some items are out of stock", issues: availabilityErrors });
-  }
+      if (availabilityErrors.length) {
+        const error = new Error("Some items are out of stock");
+        error.status = 409;
+        error.issues = availabilityErrors;
+        throw error;
+      }
 
-  const updatedItems = [];
-  const createdTransactions = [];
+      const updatedItems = [];
+      const createdTransactions = [];
+      const stockMovements = [];
 
-  for (const item of requestedItems) {
-    const inventoryItem = inventoryMap.get(item.inventoryId);
-    const updated = await InventoryItem.findOneAndUpdate(
-      { _id: item.inventoryId, quantity: { $gte: item.quantity } },
-      { $inc: { quantity: -item.quantity } },
-      { new: true, runValidators: true }
-    );
+      for (const item of requestedItems) {
+        const inventoryItem = inventoryMap.get(item.inventoryId);
+        const previousQuantity = Number(inventoryItem.quantity || 0);
+        const updated = await InventoryItem.findOneAndUpdate(
+          { _id: item.inventoryId, quantity: { $gte: item.quantity } },
+          {
+            $inc: { quantity: -item.quantity },
+            $set: {
+              status: previousQuantity - item.quantity > 0 ? "in_stock" : "sold_out",
+              lowStock: previousQuantity - item.quantity <= Number(inventoryItem.reorderPoint || 0)
+            }
+          },
+          { new: true, runValidators: true, session }
+        );
 
-    if (!updated) {
-      return res.status(409).json({
-        error: "Inventory changed during checkout. Please refresh and try again."
-      });
-    }
+        if (!updated) {
+          const error = new Error("Inventory changed during checkout. Please refresh and try again.");
+          error.status = 409;
+          throw error;
+        }
 
-    const nextStatus = updated.quantity > 0 ? "in_stock" : "sold_out";
-    if (normalize(updated.status) !== nextStatus) {
-      updated.status = nextStatus;
-      await updated.save();
-    }
+        updatedItems.push(updated);
 
-    updatedItems.push(updated);
+        const unitBuyPrice = Number(inventoryItem.buyPrice || 0);
+        const unitSellPrice = Number(inventoryItem.sellPrice || 0);
+        createdTransactions.push({
+          inventoryItemId: updated._id,
+          brand: updated.brand,
+          model: updated.model,
+          partType: updated.partType,
+          quantity: item.quantity,
+          unitBuyPrice,
+          unitSellPrice,
+          totalCost: unitBuyPrice * item.quantity,
+          totalRevenue: unitSellPrice * item.quantity,
+          profit: (unitSellPrice - unitBuyPrice) * item.quantity
+        });
 
-    const unitBuyPrice = Number(inventoryItem?.buyPrice || 0);
-    const unitSellPrice = Number(inventoryItem?.sellPrice || 0);
-    createdTransactions.push({
-      inventoryItemId: updated._id,
-      brand: updated.brand,
-      model: updated.model,
-      partType: updated.partType,
-      quantity: item.quantity,
-      unitBuyPrice,
-      unitSellPrice,
-      totalCost: unitBuyPrice * item.quantity,
-      totalRevenue: unitSellPrice * item.quantity,
-      profit: (unitSellPrice - unitBuyPrice) * item.quantity
+        stockMovements.push(buildMovement({
+          item: inventoryItem,
+          previousQuantity,
+          newQuantity: updated.quantity,
+          quantityDelta: -item.quantity,
+          source: "website_checkout",
+          movementType: "fulfill",
+          reason: "Inventory checkout",
+          userId: req.user?.sub
+        }));
+
+        await enqueueLowStockAlert({ item: updated, session });
+      }
+
+      if (createdTransactions.length) {
+        await InventoryTransaction.insertMany(createdTransactions, { session });
+      }
+
+      if (stockMovements.length) {
+        await StockMovement.insertMany(stockMovements, { session });
+      }
+
+      result = updatedItems;
     });
-  }
-
-  if (createdTransactions.length) {
-    await InventoryTransaction.insertMany(createdTransactions);
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({
+      error: err.message || "Checkout failed",
+      ...(err.issues ? { issues: err.issues } : {})
+    });
+  } finally {
+    await session.endSession();
   }
 
   return res.json({
     status: "ok",
     message: "Checkout completed",
-    items: updatedItems
+    items: result
   });
 });
 
 // Admin: create item
-router.post("/", requireAuth, async (req, res) => {
-  const item = await InventoryItem.create(req.body);
+router.post("/", ...inventoryWriteAuth, async (req, res) => {
+  const session = await mongoose.startSession();
+  let item;
+
+  try {
+    await session.withTransaction(async () => {
+      [item] = await InventoryItem.create(
+        [{ ...req.body, lowStock: Number(req.body.quantity || 0) <= Number(req.body.reorderPoint || 0) }],
+        { session }
+      );
+
+      if (Number(item.quantity || 0) > 0) {
+        await StockMovement.create(
+          [
+            buildMovement({
+              item,
+              previousQuantity: 0,
+              newQuantity: item.quantity,
+              quantityDelta: item.quantity,
+              source: "admin_inventory",
+              movementType: "receive",
+              reason: "Opening stock",
+              userId: req.user?.sub
+            })
+          ],
+          { session }
+        );
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+
   res.status(201).json(item);
 });
 
 // Admin: update item
-router.put("/:id", requireAuth, async (req, res) => {
-  const item = await InventoryItem.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true
-  });
-  if (!item) {
-    return res.status(404).json({ error: "Item not found" });
+router.put("/:id", ...inventoryWriteAuth, async (req, res) => {
+  const session = await mongoose.startSession();
+  let item;
+
+  try {
+    await session.withTransaction(async () => {
+      const previous = await InventoryItem.findById(req.params.id).session(session);
+      if (!previous) {
+        const error = new Error("Item not found");
+        error.status = 404;
+        throw error;
+      }
+
+      const nextQuantity = req.body.quantity !== undefined ? Number(req.body.quantity) : Number(previous.quantity || 0);
+      item = await InventoryItem.findByIdAndUpdate(
+        req.params.id,
+        {
+          ...req.body,
+          lowStock: nextQuantity <= Number(req.body.reorderPoint ?? previous.reorderPoint ?? 0),
+          status: nextQuantity > 0 ? "in_stock" : "sold_out"
+        },
+        { new: true, runValidators: true, session }
+      );
+
+      const quantityDelta = Number(item.quantity || 0) - Number(previous.quantity || 0);
+      if (quantityDelta !== 0) {
+        await StockMovement.create(
+          [
+            buildMovement({
+              item,
+              previousQuantity: Number(previous.quantity || 0),
+              newQuantity: Number(item.quantity || 0),
+              quantityDelta,
+              source: "admin_inventory",
+              movementType: quantityDelta > 0 ? "receive" : "adjustment",
+              reason: "Admin inventory update",
+              userId: req.user?.sub
+            })
+          ],
+          { session }
+        );
+
+        if (quantityDelta < 0) {
+          await enqueueLowStockAlert({ item, session });
+        }
+      }
+    });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || "Update failed" });
+  } finally {
+    await session.endSession();
   }
+
   res.json(item);
 });
 
 // Admin: delete item
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", ...inventoryWriteAuth, async (req, res) => {
   const item = await InventoryItem.findByIdAndDelete(req.params.id);
   if (!item) {
     return res.status(404).json({ error: "Item not found" });

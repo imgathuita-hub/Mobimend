@@ -7,6 +7,7 @@ session_start();
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
+use Mobimend\Services\InventoryLedger;
 
 $pdo = Database::connection();
 $message = '';
@@ -19,6 +20,7 @@ $form = [
     'model' => '',
     'part_type' => '',
     'quantity' => '0',
+    'reorder_point' => '5',
     'buy_price' => '0',
     'sell_price' => '0',
     'status' => 'in_stock',
@@ -55,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif ($user) {
+        try {
         if ($action === 'save_item') {
             $itemId = (int) ($_POST['item_id'] ?? 0);
             $form = [
@@ -62,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'model' => trim((string) ($_POST['model'] ?? '')),
                 'part_type' => trim((string) ($_POST['part_type'] ?? '')),
                 'quantity' => (string) max(0, (int) ($_POST['quantity'] ?? 0)),
+                'reorder_point' => (string) max(1, (int) ($_POST['reorder_point'] ?? 5)),
                 'buy_price' => (string) max(0, (float) ($_POST['buy_price'] ?? 0)),
                 'sell_price' => (string) max(0, (float) ($_POST['sell_price'] ?? 0)),
                 'status' => trim((string) ($_POST['status'] ?? 'in_stock')),
@@ -78,6 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'model' => $form['model'],
                     'part_type' => $form['part_type'],
                     'quantity' => (int) $form['quantity'],
+                    'low_stock_threshold' => (int) $form['reorder_point'],
+                    'reorder_point' => (int) $form['reorder_point'],
+                    'low_stock' => (int) $form['quantity'] <= (int) $form['reorder_point'] ? 1 : 0,
                     'buy_price' => (float) $form['buy_price'],
                     'sell_price' => (float) $form['sell_price'],
                     'status' => in_array($form['status'], ['in_stock', 'sold_out'], true) ? $form['status'] : 'in_stock',
@@ -86,25 +93,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
 
                 if ($itemId > 0) {
+                    $pdo->beginTransaction();
+                    $lock = $pdo->prepare('SELECT * FROM inventory_items WHERE id = :id FOR UPDATE');
+                    $lock->execute(['id' => $itemId]);
+                    $previous = $lock->fetch();
+                    if (!$previous) {
+                        throw new RuntimeException('Inventory item not found.');
+                    }
+
                     $stmt = $pdo->prepare(
                         'UPDATE inventory_items
                          SET brand = :brand, model = :model, part_type = :part_type, quantity = :quantity,
+                             low_stock_threshold = :low_stock_threshold, reorder_point = :reorder_point, low_stock = :low_stock,
                              buy_price = :buy_price, sell_price = :sell_price, status = :status, notes = :notes,
                              updated_at = :updated_at
                          WHERE id = :id'
                     );
                     $params['id'] = $itemId;
                     $stmt->execute($params);
+
+                    $quantityDelta = (int) $params['quantity'] - (int) $previous['quantity'];
+                    if ($quantityDelta !== 0) {
+                        $movement = [
+                            'inventory_item_id' => $itemId,
+                            'product_variant_id' => !empty($previous['product_variant_id']) ? (int) $previous['product_variant_id'] : null,
+                            'movement_type' => $quantityDelta > 0 ? 'receive' : 'adjustment',
+                            'source' => 'admin_inventory',
+                            'quantity_delta' => $quantityDelta,
+                            'previous_quantity' => (int) $previous['quantity'],
+                            'new_quantity' => (int) $params['quantity'],
+                            'unit_buy_price' => (float) $params['buy_price'],
+                            'unit_sell_price' => (float) $params['sell_price'],
+                            'brand' => (string) $params['brand'],
+                            'model' => (string) $params['model'],
+                            'part_type' => (string) $params['part_type'],
+                            'reason' => 'Direct admin inventory edit',
+                            'created_by_user_id' => (int) $user['id'],
+                        ];
+                        InventoryLedger::recordMovement($pdo, $movement);
+                        InventoryLedger::mirrorTransaction($pdo, $movement);
+
+                        if ($quantityDelta < 0) {
+                            InventoryLedger::enqueueReorderAlert($pdo, [
+                                'inventory_item_id' => $itemId,
+                                'product_variant_id' => !empty($previous['product_variant_id']) ? (int) $previous['product_variant_id'] : null,
+                                'brand' => (string) $params['brand'],
+                                'model' => (string) $params['model'],
+                                'part_type' => (string) $params['part_type'],
+                                'quantity' => (int) $params['quantity'],
+                                'reorder_point' => (int) $params['reorder_point'],
+                            ]);
+                        }
+                    }
+
+                    $pdo->commit();
                     $message = 'Inventory item updated.';
                 } else {
+                    $pdo->beginTransaction();
                     $stmt = $pdo->prepare(
                         'INSERT INTO inventory_items
-                         (brand, model, part_type, quantity, buy_price, sell_price, status, notes, created_at, updated_at)
+                         (brand, model, part_type, quantity, low_stock_threshold, reorder_point, low_stock, buy_price, sell_price, status, notes, created_at, updated_at)
                          VALUES
-                         (:brand, :model, :part_type, :quantity, :buy_price, :sell_price, :status, :notes, :created_at, :updated_at)'
+                         (:brand, :model, :part_type, :quantity, :low_stock_threshold, :reorder_point, :low_stock, :buy_price, :sell_price, :status, :notes, :created_at, :updated_at)'
                     );
                     $params['created_at'] = now();
                     $stmt->execute($params);
+                    $itemId = (int) $pdo->lastInsertId();
+
+                    if ((int) $params['quantity'] > 0) {
+                        InventoryLedger::recordMovement($pdo, [
+                            'inventory_item_id' => $itemId,
+                            'movement_type' => 'receive',
+                            'source' => 'admin_inventory',
+                            'quantity_delta' => (int) $params['quantity'],
+                            'previous_quantity' => 0,
+                            'new_quantity' => (int) $params['quantity'],
+                            'unit_buy_price' => (float) $params['buy_price'],
+                            'unit_sell_price' => (float) $params['sell_price'],
+                            'brand' => (string) $params['brand'],
+                            'model' => (string) $params['model'],
+                            'part_type' => (string) $params['part_type'],
+                            'reason' => 'Direct admin inventory create',
+                            'created_by_user_id' => (int) $user['id'],
+                        ]);
+                    }
+
+                    $pdo->commit();
                     $message = 'Inventory item created.';
                 }
 
@@ -117,11 +191,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'delete_item') {
             $itemId = (int) ($_POST['item_id'] ?? 0);
             if ($itemId > 0) {
-                $stmt = $pdo->prepare('DELETE FROM inventory_items WHERE id = :id');
-                $stmt->execute(['id' => $itemId]);
-                header('Location: admin_inventory.php?message=' . urlencode('Inventory item deleted.') . '&tone=' . urlencode('success'));
+                $pdo->beginTransaction();
+                $lock = $pdo->prepare('SELECT * FROM inventory_items WHERE id = :id FOR UPDATE');
+                $lock->execute(['id' => $itemId]);
+                $previous = $lock->fetch();
+                if (!$previous) {
+                    throw new RuntimeException('Inventory item not found.');
+                }
+                if ((int) $previous['quantity'] > 0) {
+                    InventoryLedger::recordMovement($pdo, [
+                        'inventory_item_id' => $itemId,
+                        'product_variant_id' => !empty($previous['product_variant_id']) ? (int) $previous['product_variant_id'] : null,
+                        'movement_type' => 'correction',
+                        'source' => 'admin_inventory_delete',
+                        'quantity_delta' => -((int) $previous['quantity']),
+                        'previous_quantity' => (int) $previous['quantity'],
+                        'new_quantity' => 0,
+                        'unit_buy_price' => (float) $previous['buy_price'],
+                        'unit_sell_price' => (float) $previous['sell_price'],
+                        'brand' => (string) $previous['brand'],
+                        'model' => (string) $previous['model'],
+                        'part_type' => (string) $previous['part_type'],
+                        'reason' => 'Inventory item deleted',
+                        'created_by_user_id' => (int) $user['id'],
+                    ]);
+                }
+                $stmt = $pdo->prepare(
+                    'UPDATE inventory_items
+                     SET quantity = 0, low_stock = 1, status = "sold_out", notes = CONCAT(notes, :note), updated_at = :updated_at
+                     WHERE id = :id'
+                );
+                $stmt->execute([
+                    'id' => $itemId,
+                    'note' => "\nArchived from admin inventory on " . now(),
+                    'updated_at' => now(),
+                ]);
+                $pdo->commit();
+                header('Location: admin_inventory.php?message=' . urlencode('Inventory item archived and stock zeroed.') . '&tone=' . urlencode('success'));
                 exit;
             }
+        }
+        } catch (Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $message = $exception->getMessage();
+            $tone = 'error';
         }
     }
 }
@@ -143,6 +258,7 @@ if ($user && $editingId > 0) {
             'model' => (string) $editItem['model'],
             'part_type' => (string) $editItem['part_type'],
             'quantity' => (string) $editItem['quantity'],
+            'reorder_point' => (string) ($editItem['reorder_point'] ?? $editItem['low_stock_threshold'] ?? 5),
             'buy_price' => (string) $editItem['buy_price'],
             'sell_price' => (string) $editItem['sell_price'],
             'status' => (string) $editItem['status'],
@@ -163,7 +279,7 @@ if ($user) {
     foreach ($items as $item) {
         $quantity = (int) $item['quantity'];
         $availableUnits += $quantity;
-        if ($quantity > 0 && $quantity <= 5) {
+        if ($quantity > 0 && $quantity <= (int) ($item['reorder_point'] ?? $item['low_stock_threshold'] ?? 5)) {
             $lowStockLines++;
         }
         if ($quantity <= 0 || (string) $item['status'] !== 'in_stock') {
@@ -460,6 +576,7 @@ if ($user) {
             <input type="text" name="model" placeholder="Model" value="<?= htmlspecialchars($form['model']) ?>" required>
             <input type="text" name="part_type" placeholder="Part Type" value="<?= htmlspecialchars($form['part_type']) ?>" required>
             <input type="number" min="0" name="quantity" placeholder="Quantity" value="<?= htmlspecialchars($form['quantity']) ?>" required>
+            <input type="number" min="1" name="reorder_point" placeholder="Reorder Point" value="<?= htmlspecialchars($form['reorder_point']) ?>" required>
             <input type="number" min="0" step="0.01" name="buy_price" placeholder="Buy Price" value="<?= htmlspecialchars($form['buy_price']) ?>" required>
             <input type="number" min="0" step="0.01" name="sell_price" placeholder="Sell Price" value="<?= htmlspecialchars($form['sell_price']) ?>" required>
             <select name="status">
@@ -490,6 +607,7 @@ if ($user) {
                   <th>Model</th>
                   <th>Part</th>
                   <th>Qty</th>
+                  <th>Reorder</th>
                   <th>Buy</th>
                   <th>Sell</th>
                   <th>Status</th>
@@ -507,17 +625,18 @@ if ($user) {
                       <td><?= htmlspecialchars((string) $item['brand']) ?></td>
                       <td><?= htmlspecialchars((string) $item['model']) ?></td>
                       <td><?= htmlspecialchars((string) $item['part_type']) ?></td>
-                      <td><?= (int) $item['quantity'] ?></td>
+                    <td><?= (int) $item['quantity'] ?></td>
+                    <td><?= (int) ($item['reorder_point'] ?? $item['low_stock_threshold'] ?? 5) ?></td>
                       <td><?= number_format((float) $item['buy_price'], 2) ?></td>
                       <td><?= number_format((float) $item['sell_price'], 2) ?></td>
                       <td><?= htmlspecialchars((string) $item['status']) ?></td>
                       <td>
                         <div class="actions">
                           <a href="admin_inventory.php?edit=<?= (int) $item['id'] ?>" class="button-link">Edit</a>
-                          <form method="post" onsubmit="return confirm('Delete this item?');">
+                          <form method="post" onsubmit="return confirm('Archive this item and zero stock?');">
                             <input type="hidden" name="action" value="delete_item">
                             <input type="hidden" name="item_id" value="<?= (int) $item['id'] ?>">
-                            <button type="submit" class="danger">Delete</button>
+                            <button type="submit" class="danger">Archive</button>
                           </form>
                         </div>
                       </td>

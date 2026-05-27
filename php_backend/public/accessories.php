@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
+use Mobimend\Services\InventoryLedger;
 
 $pdo = Database::connection();
 $message = (string) ($_GET['message'] ?? '');
@@ -51,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($selectedItems as $variantId => $quantity) {
             $stmt = $pdo->prepare(
                 'SELECT pv.*, p.id AS product_id, p.name, p.brand, p.compatible_brand, p.compatible_model,
-                        p.minimum_wholesale_quantity, ii.id AS inventory_item_id, ii.buy_price
+                        p.minimum_wholesale_quantity, ii.id AS inventory_item_id, ii.buy_price, ii.reorder_point, ii.low_stock_threshold
                  FROM product_variants pv
                  INNER JOIN products p ON p.id = pv.product_id
                  LEFT JOIN inventory_items ii ON ii.product_variant_id = pv.id
@@ -126,16 +127,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $orderItemId = (int) $pdo->lastInsertId();
 
-            $stmt = $pdo->prepare('UPDATE product_variants SET stock_quantity = :stock, updated_at = :updated_at WHERE id = :id');
-            $stmt->execute(['stock' => $nextStock, 'updated_at' => now(), 'id' => (int) $variant['id']]);
+            $reorderPoint = (int) ($variant['reorder_point'] ?? $variant['low_stock_threshold'] ?? 0);
+            $stmt = $pdo->prepare('UPDATE product_variants SET stock_quantity = :stock, low_stock = :low_stock, updated_at = :updated_at WHERE id = :id');
+            $stmt->execute([
+                'stock' => $nextStock,
+                'low_stock' => $reorderPoint > 0 && $nextStock <= $reorderPoint ? 1 : 0,
+                'updated_at' => now(),
+                'id' => (int) $variant['id'],
+            ]);
 
             $inventoryItemId = (int) ($variant['inventory_item_id'] ?? 0);
             if ($inventoryItemId <= 0) {
                 $stmt = $pdo->prepare(
                     'INSERT INTO inventory_items
-                     (product_variant_id, brand, model, part_type, quantity, low_stock_threshold, buy_price, sell_price, wholesale_price, status, notes)
+                     (product_variant_id, brand, model, part_type, quantity, low_stock_threshold, reorder_point, low_stock, buy_price, sell_price, wholesale_price, status, notes)
                      VALUES
-                     (:product_variant_id, :brand, :model, :part_type, :quantity, :low_stock_threshold, 0, :sell_price, :wholesale_price, :status, :notes)'
+                     (:product_variant_id, :brand, :model, :part_type, :quantity, :low_stock_threshold, :reorder_point, :low_stock, 0, :sell_price, :wholesale_price, :status, :notes)'
                 );
                 $stmt->execute([
                     'product_variant_id' => (int) $variant['id'],
@@ -144,6 +151,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'part_type' => (string) $variant['name'],
                     'quantity' => $nextStock,
                     'low_stock_threshold' => (int) $variant['low_stock_threshold'],
+                    'reorder_point' => (int) $variant['low_stock_threshold'],
+                    'low_stock' => (int) $variant['low_stock_threshold'] > 0 && $nextStock <= (int) $variant['low_stock_threshold'] ? 1 : 0,
                     'sell_price' => (float) $variant['retail_price'],
                     'wholesale_price' => (float) $variant['wholesale_price'],
                     'status' => $nextStock > 0 ? 'in_stock' : 'sold_out',
@@ -151,9 +160,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $inventoryItemId = (int) $pdo->lastInsertId();
             } else {
-                $stmt = $pdo->prepare('UPDATE inventory_items SET quantity = :stock, status = :status, updated_at = :updated_at WHERE id = :id');
+                $stmt = $pdo->prepare('UPDATE inventory_items SET quantity = :stock, low_stock = :low_stock, status = :status, updated_at = :updated_at WHERE id = :id');
                 $stmt->execute([
                     'stock' => $nextStock,
+                    'low_stock' => $reorderPoint > 0 && $nextStock <= $reorderPoint ? 1 : 0,
                     'status' => $nextStock > 0 ? 'in_stock' : 'sold_out',
                     'updated_at' => now(),
                     'id' => $inventoryItemId,
@@ -161,27 +171,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $buyPrice = (float) ($variant['buy_price'] ?? 0);
-            $stmt = $pdo->prepare(
-                'INSERT INTO inventory_transactions
-                 (inventory_item_id, order_item_id, brand, model, part_type, quantity, unit_buy_price, unit_sell_price,
-                  total_cost, total_revenue, profit, source, created_at)
-                 VALUES
-                 (:inventory_item_id, :order_item_id, :brand, :model, :part_type, :quantity, :unit_buy_price, :unit_sell_price,
-                  :total_cost, :total_revenue, :profit, "retail_checkout", :created_at)'
-            );
-            $stmt->execute([
+            $movement = [
                 'inventory_item_id' => $inventoryItemId,
+                'product_variant_id' => (int) $variant['id'],
                 'order_item_id' => $orderItemId,
                 'brand' => (string) ($variant['brand'] ?: $variant['compatible_brand']),
                 'model' => (string) $variant['compatible_model'],
                 'part_type' => (string) $variant['name'],
-                'quantity' => $quantity,
+                'movement_type' => 'fulfill',
+                'source' => 'retail_checkout',
+                'quantity_delta' => -$quantity,
+                'previous_quantity' => (int) $variant['stock_quantity'],
+                'new_quantity' => $nextStock,
                 'unit_buy_price' => $buyPrice,
                 'unit_sell_price' => (float) $line['unit_price'],
                 'total_cost' => $buyPrice * $quantity,
                 'total_revenue' => (float) $line['line_total'],
                 'profit' => ((float) $line['unit_price'] - $buyPrice) * $quantity,
-                'created_at' => now(),
+                'reason' => 'Retail checkout ' . $orderNumber,
+            ];
+            InventoryLedger::recordMovement($pdo, $movement);
+            InventoryLedger::mirrorTransaction($pdo, $movement);
+            InventoryLedger::enqueueReorderAlert($pdo, [
+                'inventory_item_id' => $inventoryItemId,
+                'product_variant_id' => (int) $variant['id'],
+                'brand' => (string) ($variant['brand'] ?: $variant['compatible_brand']),
+                'model' => (string) $variant['compatible_model'],
+                'part_type' => (string) $variant['name'],
+                'quantity' => $nextStock,
+                'reorder_point' => (int) ($variant['reorder_point'] ?? $variant['low_stock_threshold'] ?? 0),
             ]);
         }
 

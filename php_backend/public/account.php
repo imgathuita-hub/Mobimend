@@ -241,6 +241,31 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
+function table_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+    $key = $table . '.' . $column;
+
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = :table
+           AND COLUMN_NAME = :column'
+    );
+    $stmt->execute([
+        'table' => $table,
+        'column' => $column,
+    ]);
+
+    $cache[$key] = (int) $stmt->fetchColumn() > 0;
+    return $cache[$key];
+}
+
 if (!isset($_SESSION['account_user'], $_SESSION['admin_user']) && isset($_COOKIE[$rememberCookie])) {
     [$selector, $validator] = array_pad(explode(':', (string) $_COOKIE[$rememberCookie], 2), 2, '');
     if ($selector !== '' && $validator !== '') {
@@ -526,7 +551,14 @@ if ($accountUser) {
 
 if ($adminUser) {
     $adminStats['inventory_items'] = (int) $pdo->query('SELECT COUNT(*) FROM inventory_items')->fetchColumn();
-    $adminStats['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM inventory_items WHERE quantity <= low_stock_threshold')->fetchColumn();
+    if (table_column_exists($pdo, 'inventory_items', 'low_stock')) {
+        $lowStockSql = 'SELECT COUNT(*) FROM inventory_items WHERE low_stock = 1';
+    } elseif (table_column_exists($pdo, 'inventory_items', 'reorder_point')) {
+        $lowStockSql = 'SELECT COUNT(*) FROM inventory_items WHERE quantity <= reorder_point';
+    } else {
+        $lowStockSql = 'SELECT COUNT(*) FROM inventory_items WHERE quantity <= low_stock_threshold';
+    }
+    $adminStats['low_stock'] = (int) $pdo->query($lowStockSql)->fetchColumn();
     $adminStats['pending_repairs'] = (int) $pdo->query("SELECT COUNT(*) FROM repair_bookings WHERE status IN ('Pending', 'In Progress')")->fetchColumn();
     $adminStats['orders_today'] = (int) $pdo->query('SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURRENT_DATE')->fetchColumn();
     $adminStats['pending_payments'] = (int) $pdo->query("SELECT COUNT(*) FROM payments WHERE status IN ('pending', 'processing', 'requires_review')")->fetchColumn();

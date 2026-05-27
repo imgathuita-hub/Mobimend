@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
+use Mobimend\Services\InventoryLedger;
 
 $pdo = Database::connection();
 $message = '';
@@ -116,19 +117,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $quantity = (int) $line['quantity'];
 
                 $nextQuantity = (int) $item['quantity'] - $quantity;
-                $update = $pdo->prepare('UPDATE inventory_items SET quantity = :quantity, status = :status, updated_at = :updated_at WHERE id = :id');
+                $reorderPoint = (int) ($item['reorder_point'] ?? $item['low_stock_threshold'] ?? 0);
+                $update = $pdo->prepare('UPDATE inventory_items SET quantity = :quantity, low_stock = :low_stock, status = :status, updated_at = :updated_at WHERE id = :id');
                 $update->execute([
                     'id' => (int) $item['id'],
                     'quantity' => $nextQuantity,
+                    'low_stock' => $reorderPoint > 0 && $nextQuantity <= $reorderPoint ? 1 : 0,
                     'status' => $nextQuantity > 0 ? 'in_stock' : 'sold_out',
                     'updated_at' => now(),
                 ]);
 
                 if (!empty($item['product_variant_id'])) {
                     $variantStock = max(0, (int) ($item['stock_quantity'] ?? $item['quantity']) - $quantity);
-                    $variantUpdate = $pdo->prepare('UPDATE product_variants SET stock_quantity = :stock, updated_at = :updated_at WHERE id = :id');
+                    $variantUpdate = $pdo->prepare('UPDATE product_variants SET stock_quantity = :stock, low_stock = :low_stock, updated_at = :updated_at WHERE id = :id');
                     $variantUpdate->execute([
                         'stock' => $variantStock,
+                        'low_stock' => $reorderPoint > 0 && $variantStock <= $reorderPoint ? 1 : 0,
                         'updated_at' => now(),
                         'id' => (int) $item['product_variant_id'],
                     ]);
@@ -153,28 +157,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $orderItemId = (int) $pdo->lastInsertId();
 
-                $insert = $pdo->prepare(
-                    'INSERT INTO inventory_transactions
-                     (inventory_item_id, order_item_id, brand, model, part_type, quantity, unit_buy_price, unit_sell_price,
-                      total_cost, total_revenue, profit, source, created_at)
-                     VALUES
-                     (:inventory_item_id, :order_item_id, :brand, :model, :part_type, :quantity, :unit_buy_price, :unit_sell_price,
-                      :total_cost, :total_revenue, :profit, :source, :created_at)'
-                );
-                $insert->execute([
+                $movement = [
                     'inventory_item_id' => (int) $item['id'],
+                    'product_variant_id' => !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
                     'order_item_id' => $orderItemId,
                     'brand' => $item['brand'],
                     'model' => $item['model'],
                     'part_type' => $item['part_type'],
-                    'quantity' => $quantity,
+                    'movement_type' => 'fulfill',
+                    'source' => 'wholesale_checkout',
+                    'quantity_delta' => -$quantity,
+                    'previous_quantity' => (int) $item['quantity'],
+                    'new_quantity' => $nextQuantity,
                     'unit_buy_price' => (float) $line['unit_buy_price'],
                     'unit_sell_price' => (float) $line['unit_sell_price'],
                     'total_cost' => (float) $line['unit_buy_price'] * $quantity,
                     'total_revenue' => (float) $line['line_revenue'],
                     'profit' => ((float) $line['unit_sell_price'] - (float) $line['unit_buy_price']) * $quantity,
-                    'source' => 'wholesale_checkout',
-                    'created_at' => now(),
+                    'reason' => 'Wholesale checkout ' . $orderNumber,
+                ];
+                InventoryLedger::recordMovement($pdo, $movement);
+                InventoryLedger::mirrorTransaction($pdo, $movement);
+                InventoryLedger::enqueueReorderAlert($pdo, [
+                    'inventory_item_id' => (int) $item['id'],
+                    'product_variant_id' => !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
+                    'brand' => (string) $item['brand'],
+                    'model' => (string) $item['model'],
+                    'part_type' => (string) $item['part_type'],
+                    'quantity' => $nextQuantity,
+                    'reorder_point' => (int) ($item['reorder_point'] ?? $item['low_stock_threshold'] ?? 0),
                 ]);
             }
 

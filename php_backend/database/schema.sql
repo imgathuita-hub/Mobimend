@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS products (
   wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   minimum_wholesale_quantity INT UNSIGNED NOT NULL DEFAULT 1,
   status ENUM('draft', 'active', 'out_of_stock', 'archived') NOT NULL DEFAULT 'active',
-  image_path VARCHAR(255) NULL,
+  media_url VARCHAR(512) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE SET NULL,
@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
   wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   stock_quantity INT NOT NULL DEFAULT 0,
   low_stock_threshold INT NOT NULL DEFAULT 5,
+  reorder_point INT NOT NULL DEFAULT 5,
+  low_stock TINYINT(1) NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -98,6 +100,8 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   part_type VARCHAR(120) NOT NULL,
   quantity INT NOT NULL DEFAULT 0,
   low_stock_threshold INT NOT NULL DEFAULT 5,
+  reorder_point INT NOT NULL DEFAULT 5,
+  low_stock TINYINT(1) NOT NULL DEFAULT 0,
   buy_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   sell_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -126,9 +130,52 @@ CREATE TABLE IF NOT EXISTS inventory_transactions (
   profit DECIMAL(12,2) NOT NULL DEFAULT 0,
   source VARCHAR(80) NOT NULL DEFAULT 'website_checkout',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_inventory_transactions_item FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON DELETE CASCADE,
+  CONSTRAINT fk_inventory_transactions_item FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id),
   INDEX idx_inventory_transactions_item (inventory_item_id),
   INDEX idx_inventory_transactions_source (source)
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  inventory_item_id BIGINT UNSIGNED NOT NULL,
+  product_variant_id BIGINT UNSIGNED NULL,
+  order_item_id BIGINT UNSIGNED NULL,
+  movement_type ENUM('receive', 'fulfill', 'return', 'adjustment', 'correction') NOT NULL DEFAULT 'adjustment',
+  source VARCHAR(80) NOT NULL DEFAULT 'inventory',
+  quantity_delta INT NOT NULL,
+  previous_quantity INT NOT NULL DEFAULT 0,
+  new_quantity INT NOT NULL DEFAULT 0,
+  unit_buy_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+  unit_sell_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_cost DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_revenue DECIMAL(12,2) NOT NULL DEFAULT 0,
+  profit DECIMAL(12,2) NOT NULL DEFAULT 0,
+  reason VARCHAR(255) NOT NULL DEFAULT '',
+  created_by_user_id BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_stock_movements_item FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id),
+  CONSTRAINT fk_stock_movements_variant FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE SET NULL,
+  CONSTRAINT fk_stock_movements_user FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_stock_movements_item_time (inventory_item_id, created_at),
+  INDEX idx_stock_movements_order_item (order_item_id),
+  INDEX idx_stock_movements_source (source),
+  INDEX idx_stock_movements_type (movement_type)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_alert_jobs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  inventory_item_id BIGINT UNSIGNED NOT NULL,
+  job_type VARCHAR(80) NOT NULL DEFAULT 'low_stock',
+  payload JSON NOT NULL,
+  status ENUM('pending', 'processing', 'completed', 'failed') NOT NULL DEFAULT 'pending',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_inventory_alert_jobs_item FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON DELETE CASCADE,
+  INDEX idx_inventory_alert_jobs_status_available (status, available_at),
+  INDEX idx_inventory_alert_jobs_item (inventory_item_id)
 );
 
 CREATE TABLE IF NOT EXISTS repair_services (

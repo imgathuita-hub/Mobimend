@@ -1,6 +1,6 @@
 # Mobimend Project Structure
 
-This repository currently has several implementation paths. Use `php_backend` as the main path for the PHP/MySQL product, and treat the other folders as legacy or reference code unless you intentionally revive them.
+This repository uses `php_backend` as the canonical PHP/MySQL product backend. Legacy PHP entry points have been removed so stock writes cannot drift through a second PHP code path.
 
 ## Recommended Ownership
 
@@ -11,8 +11,7 @@ This repository currently has several implementation paths. Use `php_backend` as
 | `php_backend/database/schema.sql` | Canonical MySQL schema for the commerce, repair, wholesale, payment, blog, and admin model. | Primary |
 | `public/` | Static HTML/CSS/JS prototype and image assets. Good for design migration into PHP pages. | Prototype |
 | `public/assets/` | Brand, repair, part, device, staff, and marketing images. | Shared assets |
-| `backend/` | Older Node/Mongo API prototype for auth, inventory, and repairs. | Legacy/reference |
-| `legacy_php/` | Older PHP repair booking experiment. | Legacy/reference |
+| `backend/` | Node/Mongo API for auth, inventory service routes, movement audit, and queued low-stock alerts. | Service |
 | `app/` | Older MVC-style PHP folders without a complete current entry point. | Legacy/reference |
 | `server/` | Empty or unused server workspace. | Archive candidate |
 | `storage/` | Logs and future upload storage. | Keep |
@@ -23,7 +22,7 @@ Do not move working files until the PHP backend is stable. Instead, consolidate 
 
 - Add customer/admin pages under `php_backend/public`.
 - Add shared PHP logic under `php_backend/src`.
-- Keep uploads under `storage/uploads`, grouped by `payments`, `products`, `blog`, and `repairs`.
+- Store product media in cloud object storage and save HTTPS URLs in `media_url`.
 - Reuse image files from `public/assets` until there is a dedicated asset pipeline.
 - Move static HTML prototypes into `docs/prototypes` later, after each page has a PHP equivalent.
 

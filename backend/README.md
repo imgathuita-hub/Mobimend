@@ -17,3 +17,8 @@
 ## Repairs
 - `POST /api/repairs` creates a booking (public).
 - Admin endpoints require `Authorization: Bearer <token>`.
+
+## Inventory
+- Inventory write endpoints require a bearer token with `admin`, `super_admin`, or `inventory_manager` role.
+- Stock decrements run in MongoDB transactions, write `StockMovement` audit records, and enqueue `InventoryAlertJob` low-stock work instead of sending notifications inline.
+- MongoDB transactions require a replica set or compatible managed MongoDB deployment.
