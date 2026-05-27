@@ -7,3 +7,6 @@ ALTER TABLE products
 UPDATE products
 SET catalog_channel = 'shop'
 WHERE catalog_channel IS NULL OR catalog_channel = '';
+
+CREATE INDEX IF NOT EXISTS idx_products_catalog_channel
+  ON products (catalog_channel);

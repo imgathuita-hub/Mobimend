@@ -39,6 +39,19 @@ function product_column_exists(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function ensure_catalog_channel(PDO $pdo): void
+{
+    if (product_column_exists($pdo, 'catalog_channel')) {
+        return;
+    }
+
+    $pdo->exec(
+        'ALTER TABLE products
+         ADD COLUMN catalog_channel ENUM("shop", "wholesale", "both") NOT NULL DEFAULT "shop"
+         AFTER minimum_wholesale_quantity'
+    );
+}
+
 function upload_product_image(array $file): string
 {
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
@@ -87,7 +100,8 @@ function product_image_url(?string $mediaUrl): string
     return $mediaUrl !== '' ? $mediaUrl : 'assets/LOGO FINAL MOBIMEND WH BG.png';
 }
 
-$hasCatalogChannel = product_column_exists($pdo, 'catalog_channel');
+ensure_catalog_channel($pdo);
+$hasCatalogChannel = true;
 
 if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));

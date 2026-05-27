@@ -38,6 +38,19 @@ function shop_product_column_exists(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function shop_ensure_catalog_channel(PDO $pdo): void
+{
+    if (shop_product_column_exists($pdo, 'catalog_channel')) {
+        return;
+    }
+
+    $pdo->exec(
+        'ALTER TABLE products
+         ADD COLUMN catalog_channel ENUM("shop", "wholesale", "both") NOT NULL DEFAULT "shop"
+         AFTER minimum_wholesale_quantity'
+    );
+}
+
 function shop_redirect(string $message, string $tone = 'success'): never
 {
     header('Location: accessories.php?message=' . urlencode($message) . '&tone=' . urlencode($tone) . '#cart');
@@ -81,7 +94,8 @@ function shop_delivery_label(string $deliveryOption): string
     };
 }
 
-$hasCatalogChannel = shop_product_column_exists($pdo, 'catalog_channel');
+shop_ensure_catalog_channel($pdo);
+$hasCatalogChannel = true;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? 'checkout');
@@ -531,7 +545,12 @@ $grandTotal = $cartTotal + $deliveryFee;
                       <input type="hidden" name="action" value="add_cart">
                       <input type="hidden" name="variant_id" value="<?= (int) $product['id'] ?>">
                       <input type="number" min="1" max="<?= $stock ?>" name="quantity" value="1" <?= $stock <= 0 ? 'disabled' : '' ?>>
-                      <button class="btn-dark" type="submit" <?= $stock <= 0 ? 'disabled' : '' ?>><i class="fa-solid fa-cart-plus"></i> Add</button>
+                      <button class="btn-dark" type="submit" data-add-confirm <?= $stock <= 0 ? 'disabled' : '' ?>><i class="fa-solid fa-cart-plus"></i> Add</button>
+                      <div class="add-cart-confirm" hidden>
+                        <span>Add this item to cart?</span>
+                        <button class="btn-dark" type="button" data-confirm-add>Confirm</button>
+                        <button class="btn-ghost" type="button" data-cancel-add>Cancel</button>
+                      </div>
                     </form>
                   </div>
                 </div>
@@ -651,13 +670,45 @@ $grandTotal = $cartTotal + $deliveryFee;
 
   <script src="chatbot.js"></script>
   <script>
+    document.addEventListener('click', (event) => {
+      const confirmButton = event.target.closest('[data-confirm-add]');
+      const cancelButton = event.target.closest('[data-cancel-add]');
+
+      if (confirmButton) {
+        const form = confirmButton.closest('.add-cart-form');
+        if (form) {
+          form.dataset.confirmed = 'true';
+          form.requestSubmit();
+        }
+      }
+
+      if (cancelButton) {
+        const form = cancelButton.closest('.add-cart-form');
+        const panel = form?.querySelector('.add-cart-confirm');
+        if (form && panel) {
+          delete form.dataset.confirmed;
+          panel.hidden = true;
+        }
+      }
+    });
+
     document.querySelectorAll('.add-cart-form').forEach((form) => {
       form.addEventListener('submit', async (event) => {
+        if (form.dataset.confirmed !== 'true') {
+          event.preventDefault();
+          const panel = form.querySelector('.add-cart-confirm');
+          if (panel) {
+            panel.hidden = false;
+          }
+          return;
+        }
+
         if (!window.fetch || !window.DOMParser) {
           return;
         }
 
         event.preventDefault();
+        delete form.dataset.confirmed;
         const button = form.querySelector('button[type="submit"]');
         const originalText = button ? button.innerHTML : '';
         if (button) {

@@ -1306,6 +1306,29 @@ textarea:focus {
   width: 76px;
 }
 
+.add-cart-confirm {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d7eef3;
+  border-radius: 8px;
+  background: #f0fbfd;
+}
+
+.add-cart-confirm[hidden] {
+  display: none;
+}
+
+.add-cart-confirm span {
+  color: #07596b;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
 .price {
   font-size: 1.2rem;
   font-weight: 900;
@@ -3945,6 +3968,10 @@ textarea:focus {
   }
 
   .cart-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .add-cart-confirm {
     grid-template-columns: 1fr;
   }
 
