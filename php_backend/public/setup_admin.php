@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';

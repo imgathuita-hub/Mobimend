@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -10,10 +11,15 @@ use Mobimend\Config\Database;
 use Mobimend\Services\InventoryLedger;
 
 $pdo = Database::connection();
+$adminRoles = ['admin', 'super_admin', 'technician'];
 $message = '';
 $tone = 'info';
 $editingId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $user = $_SESSION['admin_user'] ?? null;
+if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, true)) {
+    unset($_SESSION['admin_user']);
+    $user = null;
+}
 
 $form = [
     'brand' => '',
@@ -42,7 +48,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute(['email' => $email]);
             $foundUser = $stmt->fetch();
 
-            if (!$foundUser || !password_verify($password, (string) $foundUser['password_hash'])) {
+            if (
+                !$foundUser
+                || !password_verify($password, (string) $foundUser['password_hash'])
+                || !in_array((string) $foundUser['role'], $adminRoles, true)
+            ) {
                 $message = 'Invalid credentials.';
                 $tone = 'error';
             } else {
@@ -52,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'email' => (string) $foundUser['email'],
                     'role' => (string) $foundUser['role'],
                 ];
-                header('Location: admin_inventory.php');
+                header('Location: admin_dashboard.php');
                 exit;
             }
         }
@@ -295,6 +305,7 @@ if ($user) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mobimend PHP Inventory Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin_ops.css">
   <style>
     body {
       margin: 0;
@@ -495,10 +506,22 @@ if ($user) {
     }
   </style>
 </head>
-<body>
+<body class="admin-ops">
   <header>
-    <h1>Mobimend Inventory Admin</h1>
-    <div class="hero-copy">Direct PHP workspace for inventory login, stock creation, updates, and deletion without using the JavaScript API flow.</div>
+    <div class="ops-header-inner">
+      <div class="ops-brand">
+        <h1>Inventory Admin</h1>
+        <p>Control stock levels, reorder points, purchase cost, selling price, and archive decisions for repair and retail parts.</p>
+      </div>
+      <nav class="ops-nav" aria-label="Admin navigation">
+        <a href="admin_dashboard.php">Operations</a>
+        <a class="active" href="admin_inventory.php">Inventory</a>
+        <a href="admin_orders.php">Orders</a>
+        <a href="admin_repairs.php">Repairs</a>
+        <a href="admin_products.php">Products</a>
+        <a href="logout.php">Logout</a>
+      </nav>
+    </div>
   </header>
 
   <?php if (!$user): ?>
@@ -506,7 +529,7 @@ if ($user) {
       <div class="login-shell">
         <div class="card login-card">
           <h3>Admin Login</h3>
-          <p class="muted">Sign in with the admin user stored in the `users` table.</p>
+          <p class="muted">Sign in with your Mobimend admin account.</p>
 
           <?php if ($message !== ''): ?>
             <div class="banner <?= htmlspecialchars($tone) ?>"><?= htmlspecialchars($message) ?></div>
@@ -532,9 +555,12 @@ if ($user) {
           <h2>Inventory Dashboard</h2>
           <p>Signed in as <?= htmlspecialchars((string) $user['name']) ?> (<?= htmlspecialchars((string) $user['email']) ?>)</p>
         </div>
-        <a href="logout.php" class="button-link ghost">Logout</a>
-        <a href="admin_products.php" class="button-link ghost">Product Center</a>
-        <a href="admin_orders.php" class="button-link ghost">Orders</a>
+        <div class="actions">
+          <a href="admin_dashboard.php" class="button-link ghost">Operations</a>
+          <a href="admin_products.php" class="button-link ghost">Products</a>
+          <a href="admin_orders.php" class="button-link ghost">Orders</a>
+          <a href="admin_repairs.php" class="button-link ghost">Repairs</a>
+        </div>
       </div>
 
       <?php if ($message !== ''): ?>
@@ -561,7 +587,7 @@ if ($user) {
           <div class="dashboard-header">
             <div>
               <h3><?= $editingId > 0 ? 'Edit Inventory Item' : 'Add Inventory Item' ?></h3>
-              <div class="small"><?= $editingId > 0 ? 'Update the selected stock record.' : 'Create a new stock record directly in MySQL.' ?></div>
+              <div class="small"><?= $editingId > 0 ? 'Update quantities, pricing, and reorder safety for this part.' : 'Create a stock line used by repairs, retail, and wholesale fulfillment.' ?></div>
             </div>
             <?php if ($editingId > 0): ?>
               <a href="admin_inventory.php" class="button-link secondary">Clear</a>
@@ -595,7 +621,7 @@ if ($user) {
           <div class="dashboard-header">
             <div>
               <h3>Inventory Items</h3>
-              <div class="small">Direct PHP view of the `inventory_items` table.</div>
+              <div class="small">Prioritize low and out-of-stock lines before confirming repairs or orders.</div>
             </div>
           </div>
 

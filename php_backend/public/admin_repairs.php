@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -9,9 +10,14 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 use Mobimend\Config\Database;
 
 $pdo = Database::connection();
+$adminRoles = ['admin', 'super_admin', 'technician'];
 $message = '';
 $tone = 'info';
 $user = $_SESSION['admin_user'] ?? null;
+if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, true)) {
+    unset($_SESSION['admin_user']);
+    $user = null;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
@@ -28,7 +34,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute(['email' => $email]);
             $foundUser = $stmt->fetch();
 
-            if (!$foundUser || !password_verify($password, (string) $foundUser['password_hash'])) {
+            if (
+                !$foundUser
+                || !password_verify($password, (string) $foundUser['password_hash'])
+                || !in_array((string) $foundUser['role'], $adminRoles, true)
+            ) {
                 $message = 'Invalid credentials.';
                 $tone = 'error';
             } else {
@@ -38,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'email' => (string) $foundUser['email'],
                     'role' => (string) $foundUser['role'],
                 ];
-                header('Location: admin_repairs.php');
+                header('Location: admin_dashboard.php');
                 exit;
             }
         }
@@ -107,6 +117,7 @@ if ($user) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mobimend PHP Repair Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin_ops.css">
   <style>
     body {
       margin: 0;
@@ -263,10 +274,22 @@ if ($user) {
     }
   </style>
 </head>
-<body>
+<body class="admin-ops">
   <header>
-    <h1>Mobimend Repair Bookings</h1>
-    <div class="hero-copy">Direct PHP workspace for viewing, updating, and deleting repair bookings with the same session login used by the PHP inventory page.</div>
+    <div class="ops-header-inner">
+      <div class="ops-brand">
+        <h1>Repair Bookings</h1>
+        <p>Confirm bookings, move repair work through service stages, and keep customer-visible status aligned with operations.</p>
+      </div>
+      <nav class="ops-nav" aria-label="Admin navigation">
+        <a href="admin_dashboard.php">Operations</a>
+        <a href="admin_inventory.php">Inventory</a>
+        <a href="admin_orders.php">Orders</a>
+        <a class="active" href="admin_repairs.php">Repairs</a>
+        <a href="admin_products.php">Products</a>
+        <a href="logout.php">Logout</a>
+      </nav>
+    </div>
   </header>
 
   <?php if (!$user): ?>
@@ -274,7 +297,7 @@ if ($user) {
       <div class="login-shell">
         <div class="card login-card">
           <h3>Admin Login</h3>
-          <p class="muted">Sign in with the admin user stored in the `users` table.</p>
+          <p class="muted">Sign in with your Mobimend admin account.</p>
 
           <?php if ($message !== ''): ?>
             <div class="banner <?= htmlspecialchars($tone) ?>"><?= htmlspecialchars($message) ?></div>
@@ -301,8 +324,9 @@ if ($user) {
           <p>Signed in as <?= htmlspecialchars((string) $user['name']) ?> (<?= htmlspecialchars((string) $user['email']) ?>)</p>
         </div>
         <div class="actions">
-          <a href="admin_inventory.php" class="button-link ghost">Inventory Admin</a>
-          <a href="logout.php" class="button-link ghost">Logout</a>
+          <a href="admin_dashboard.php" class="button-link ghost">Operations</a>
+          <a href="admin_inventory.php" class="button-link ghost">Inventory</a>
+          <a href="admin_orders.php" class="button-link ghost">Orders</a>
         </div>
       </div>
 
@@ -329,7 +353,7 @@ if ($user) {
         <div class="dashboard-header">
           <div>
             <h3>Repair Bookings</h3>
-            <div class="small">Direct PHP view of the `repair_bookings` table.</div>
+            <div class="small">Use status updates to keep repair queue, customer tracking, and parts planning in sync.</div>
           </div>
         </div>
 

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -10,7 +11,12 @@ use Mobimend\Config\Database;
 use Mobimend\Services\InventoryLedger;
 
 $pdo = Database::connection();
+$adminRoles = ['admin', 'super_admin', 'technician'];
 $user = $_SESSION['admin_user'] ?? null;
+if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, true)) {
+    unset($_SESSION['admin_user']);
+    $user = null;
+}
 $message = (string) ($_GET['message'] ?? '');
 $tone = (string) ($_GET['tone'] ?? 'info');
 
@@ -22,7 +28,11 @@ if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
     $stmt->execute(['email' => $email]);
     $foundUser = $stmt->fetch();
 
-    if (!$foundUser || !password_verify($password, (string) $foundUser['password_hash'])) {
+    if (
+        !$foundUser
+        || !password_verify($password, (string) $foundUser['password_hash'])
+        || !in_array((string) $foundUser['role'], $adminRoles, true)
+    ) {
         $message = 'Invalid credentials.';
         $tone = 'error';
     } else {
@@ -32,7 +42,7 @@ if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
             'email' => (string) $foundUser['email'],
             'role' => (string) $foundUser['role'],
         ];
-        header('Location: admin_products.php');
+        header('Location: admin_dashboard.php');
         exit;
     }
 }
@@ -305,6 +315,7 @@ if ($user) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Product Command Center | Mobimend</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="admin_ops.css">
   <style>
     body { background: #f6f8fb; color: #111827; font-family: Inter, Arial, sans-serif; margin: 0; }
     .admin-shell { max-width: 1240px; margin: 0 auto; padding: 24px; }
@@ -338,8 +349,22 @@ if ($user) {
     @media (max-width: 900px) { .admin-grid, .stats-row, .form-grid { grid-template-columns: 1fr; } .form-grid .full { grid-column: auto; } }
   </style>
 </head>
-<body>
+<body class="admin-ops">
   <header class="admin-hero">
+    <div class="ops-header-inner">
+      <div class="ops-brand">
+        <h1>Product Command Center</h1>
+        <p>Manage catalog variants, retail visibility, wholesale rules, and inventory movement from one admin workspace.</p>
+      </div>
+      <nav class="ops-nav" aria-label="Admin navigation">
+        <a href="admin_dashboard.php">Operations</a>
+        <a href="admin_inventory.php">Inventory</a>
+        <a href="admin_orders.php">Orders</a>
+        <a href="admin_repairs.php">Repairs</a>
+        <a class="active" href="admin_products.php">Products</a>
+        <a href="logout.php">Logout</a>
+      </nav>
+    </div>
     <h1>Mobimend Product Command Center</h1>
     <p>Catalog, variants, stock levels, wholesale rules, and inventory movement in one practical admin view.</p>
     <p><a href="admin_orders.php">Orders</a> · <a href="admin_inventory.php">Legacy inventory</a> · <a href="accessories.php">Retail shop</a> · <a href="wholesale.php">Wholesale desk</a> · <a href="logout.php">Logout</a></p>

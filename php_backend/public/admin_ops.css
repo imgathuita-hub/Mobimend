@@ -1,0 +1,184 @@
+body.admin-ops {
+  margin: 0;
+  background: #f6f8fb;
+  color: #111827;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.admin-ops header,
+.admin-ops .admin-hero {
+  background: #111827;
+  color: #fff;
+  padding: 18px 24px;
+  box-shadow: none;
+}
+
+.admin-ops .ops-header-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-ops .ops-brand h1 {
+  margin: 0;
+  font: 800 22px/1.2 Inter, Arial, sans-serif;
+  letter-spacing: 0;
+}
+
+.admin-ops .hero-copy,
+.admin-ops .ops-brand p {
+  margin: 6px 0 0;
+  max-width: 760px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.admin-ops .admin-hero > h1,
+.admin-ops .admin-hero > p {
+  display: none;
+}
+
+.admin-ops .ops-nav,
+.admin-ops .topbar .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-ops .ops-nav a,
+.admin-ops .button-link,
+.admin-ops .action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: 6px;
+  padding: 7px 11px;
+  border: 1px solid #d8dee8;
+  background: #fff;
+  color: #1f2937;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-ops header .ops-nav a {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.admin-ops .ops-nav a.active,
+.admin-ops .button-link.active {
+  border-color: #5dcaa5;
+  background: #e1f5ee;
+  color: #0f6e56;
+}
+
+.admin-ops .button-link.ghost,
+.admin-ops .action-btn {
+  background: #f8fafc;
+  color: #334155;
+}
+
+.admin-ops .button-link.secondary,
+.admin-ops button.secondary {
+  background: #eef2f7;
+  color: #334155;
+  border: 1px solid #d8dee8;
+}
+
+.admin-ops .danger,
+.admin-ops button.danger {
+  background: #fcebeb;
+  color: #a32d2d;
+  border: 1px solid #f7c1c1;
+}
+
+.admin-ops button {
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.admin-ops .container,
+.admin-ops .shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 18px 20px 28px;
+}
+
+.admin-ops .card,
+.admin-ops .stat,
+.admin-ops .panel {
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  box-shadow: none;
+}
+
+.admin-ops .stats,
+.admin-ops .stats-row {
+  gap: 10px;
+}
+
+.admin-ops .stat {
+  background: #fff;
+}
+
+.admin-ops .stat span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.admin-ops .stat strong {
+  color: #111827;
+  font: 800 22px/1.2 Inter, Arial, sans-serif;
+}
+
+.admin-ops .dashboard-title h2,
+.admin-ops .card h2,
+.admin-ops .card h3 {
+  font: 800 18px/1.2 Inter, Arial, sans-serif;
+  letter-spacing: 0;
+}
+
+.admin-ops input,
+.admin-ops select,
+.admin-ops textarea {
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+}
+
+.admin-ops th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.admin-ops .status-pill {
+  border-radius: 999px;
+}
+
+@media (max-width: 760px) {
+  .admin-ops header,
+  .admin-ops .admin-hero {
+    padding: 16px;
+  }
+
+  .admin-ops .container,
+  .admin-ops .shell {
+    padding: 14px 12px 24px;
+  }
+
+  .admin-ops .ops-header-inner {
+    align-items: flex-start;
+  }
+}

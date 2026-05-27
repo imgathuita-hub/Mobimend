@@ -2,14 +2,7 @@
 
 declare(strict_types=1);
 
-$sessionPath = dirname(__DIR__, 2) . '/storage/php-sessions';
-if (!is_dir($sessionPath)) {
-    mkdir($sessionPath, 0775, true);
-}
-if (is_dir($sessionPath) && is_writable($sessionPath)) {
-    session_save_path($sessionPath);
-}
-
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -17,7 +10,12 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 use Mobimend\Config\Database;
 
 $pdo = Database::connection();
+$adminRoles = ['admin', 'super_admin', 'technician'];
 $user = $_SESSION['admin_user'] ?? null;
+if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, true)) {
+    unset($_SESSION['admin_user']);
+    $user = null;
+}
 $message = (string) ($_GET['message'] ?? '');
 $tone = (string) ($_GET['tone'] ?? 'info');
 
@@ -121,7 +119,11 @@ if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
     $stmt->execute(['email' => $email]);
     $foundUser = $stmt->fetch();
 
-    if (!$foundUser || !password_verify($password, (string) $foundUser['password_hash'])) {
+    if (
+        !$foundUser
+        || !password_verify($password, (string) $foundUser['password_hash'])
+        || !in_array((string) $foundUser['role'], $adminRoles, true)
+    ) {
         $message = 'Invalid credentials.';
         $tone = 'error';
     } else {
@@ -407,6 +409,7 @@ $urgentActions = array_sum($metrics);
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mobimend Admin Operations</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="admin_ops.css">
   <style>
     :root {
       --bg: #f5f6f8;
@@ -493,7 +496,7 @@ $urgentActions = array_sum($metrics);
     @media (max-width: 720px) { .top-bar { align-items: flex-start; } .metrics { grid-template-columns: repeat(2, 1fr); padding: 12px; } .main { padding: 12px; } .row { flex-wrap: wrap; } .row-actions { width: 100%; justify-content: flex-start; padding-left: 42px; } .blog-grid { grid-template-columns: 1fr; } .blog-card:nth-child(odd) { border-right: none; } }
   </style>
 </head>
-<body>
+<body class="admin-ops">
 <?php if (!$user): ?>
   <main class="login-shell">
     <section class="login-card">

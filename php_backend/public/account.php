@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -412,6 +413,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 open_session_for($foundUser, $adminRoles);
                 if ($remember) {
                     remember_user($pdo, (int) $foundUser['id'], $rememberCookie, $isHttps);
+                }
+                if (in_array((string) $foundUser['role'], $adminRoles, true)) {
+                    header('Location: admin_dashboard.php');
+                    exit;
                 }
                 $accountUser = $_SESSION['account_user'] ?? null;
                 $adminUser = $_SESSION['admin_user'] ?? null;

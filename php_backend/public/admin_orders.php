@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require __DIR__ . '/session_bootstrap.php';
 session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -9,7 +10,12 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 use Mobimend\Config\Database;
 
 $pdo = Database::connection();
+$adminRoles = ['admin', 'super_admin', 'technician'];
 $user = $_SESSION['admin_user'] ?? null;
+if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, true)) {
+    unset($_SESSION['admin_user']);
+    $user = null;
+}
 $message = (string) ($_GET['message'] ?? '');
 $tone = (string) ($_GET['tone'] ?? 'info');
 
@@ -20,7 +26,11 @@ if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
     $stmt->execute(['email' => $email]);
     $foundUser = $stmt->fetch();
 
-    if (!$foundUser || !password_verify($password, (string) $foundUser['password_hash'])) {
+    if (
+        !$foundUser
+        || !password_verify($password, (string) $foundUser['password_hash'])
+        || !in_array((string) $foundUser['role'], $adminRoles, true)
+    ) {
         $message = 'Invalid credentials.';
         $tone = 'error';
     } else {
@@ -30,7 +40,7 @@ if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') 
             'email' => (string) $foundUser['email'],
             'role' => (string) $foundUser['role'],
         ];
-        header('Location: admin_orders.php');
+        header('Location: admin_dashboard.php');
         exit;
     }
 }
@@ -113,6 +123,7 @@ if ($user) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Orders Command Center | Mobimend</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="admin_ops.css">
   <style>
     body { margin: 0; background: #f6f8fb; color: #111827; font-family: Inter, Arial, sans-serif; }
     .admin-hero { background: #111827; color: #fff; padding: 28px 24px; }
@@ -138,8 +149,22 @@ if ($user) {
     @media (max-width: 980px) { .stats-row { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body>
+<body class="admin-ops">
   <header class="admin-hero">
+    <div class="ops-header-inner">
+      <div class="ops-brand">
+        <h1>Orders Command Center</h1>
+        <p>Reconcile retail and wholesale orders, payment state, fulfillment progress, revenue, and profit movement.</p>
+      </div>
+      <nav class="ops-nav" aria-label="Admin navigation">
+        <a href="admin_dashboard.php">Operations</a>
+        <a href="admin_inventory.php">Inventory</a>
+        <a class="active" href="admin_orders.php">Orders</a>
+        <a href="admin_repairs.php">Repairs</a>
+        <a href="admin_products.php">Products</a>
+        <a href="logout.php">Logout</a>
+      </nav>
+    </div>
     <h1>Mobimend Orders Command Center</h1>
     <p>Retail and wholesale order reconciliation, payment status, revenue, and fulfillment state.</p>
     <p><a href="admin_products.php">Products</a> · <a href="admin_inventory.php">Inventory</a> · <a href="accessories.php">Shop</a> · <a href="wholesale.php">Wholesale</a></p>
