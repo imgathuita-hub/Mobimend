@@ -417,6 +417,8 @@ if ($user) {
           <p>Signed in as <?= htmlspecialchars((string) $user['name']) ?> (<?= htmlspecialchars((string) $user['email']) ?>)</p>
         </div>
         <a href="logout.php" class="button-link ghost">Logout</a>
+        <a href="admin_products.php" class="button-link ghost">Product Center</a>
+        <a href="admin_orders.php" class="button-link ghost">Orders</a>
       </div>
 
       <?php if ($message !== ''): ?>

@@ -130,25 +130,28 @@ document.addEventListener('click', (event) => {
 
 const productSearch = $('#productSearch');
 const categoryButtons = $$('[data-category]');
+const serverProductGrid = $('#productGrid')?.dataset.serverProducts;
 
-if ($('#productGrid')) {
+if ($('#productGrid') && !serverProductGrid) {
   renderProducts();
   renderCart();
 }
 
-categoryButtons.forEach((button) => {
-  button.addEventListener('click', () => {
-    categoryButtons.forEach((item) => item.classList.remove('active'));
-    button.classList.add('active');
-    renderProducts(button.dataset.category, productSearch?.value || '');
+if (!serverProductGrid) {
+  categoryButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      categoryButtons.forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+      renderProducts(button.dataset.category, productSearch?.value || '');
+    });
   });
-});
 
-if (productSearch) {
-  productSearch.addEventListener('input', () => {
-    const active = $('[data-category].active')?.dataset.category || 'All';
-    renderProducts(active, productSearch.value);
-  });
+  if (productSearch) {
+    productSearch.addEventListener('input', () => {
+      const active = $('[data-category].active')?.dataset.category || 'All';
+      renderProducts(active, productSearch.value);
+    });
+  }
 }
 
 $$('[data-payment-method]').forEach((method) => {

@@ -38,3 +38,23 @@ function float_value(mixed $value): float
 {
     return (float) $value;
 }
+
+function slugify(string $value): string
+{
+    $slug = strtolower(trim($value));
+    $slug = preg_replace('/[^a-z0-9]+/', '-', $slug) ?: '';
+    $slug = trim($slug, '-');
+
+    return $slug !== '' ? $slug : 'item';
+}
+
+function order_number(string $prefix = 'MM'): string
+{
+    return $prefix . '-' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
+}
+
+function redirect_with_message(string $path, string $message, string $tone = 'success'): never
+{
+    header('Location: ' . $path . '?message=' . urlencode($message) . '&tone=' . urlencode($tone));
+    exit;
+}

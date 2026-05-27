@@ -14,6 +14,12 @@ $selectedBrand = trim((string) ($_GET['brand'] ?? ''));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $quantities = $_POST['quantities'] ?? [];
     $selectedItems = [];
+    $buyerName = trim((string) ($_POST['buyer_name'] ?? ''));
+    $buyerPhone = trim((string) ($_POST['buyer_phone'] ?? ''));
+    $buyerEmail = trim((string) ($_POST['buyer_email'] ?? ''));
+    $businessName = trim((string) ($_POST['business_name'] ?? ''));
+    $deliveryAddress = trim((string) ($_POST['delivery_address'] ?? ''));
+    $paymentMethod = (string) ($_POST['payment_method'] ?? 'mpesa_stk');
 
     if (is_array($quantities)) {
         foreach ($quantities as $itemId => $quantity) {
@@ -28,14 +34,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($selectedItems === []) {
         $message = 'Choose at least one item quantity before checkout.';
         $tone = 'error';
+    } elseif ($buyerName === '' || $buyerPhone === '') {
+        $message = 'Buyer name and phone number are required for wholesale checkout.';
+        $tone = 'error';
     } else {
         try {
+            if (!in_array($paymentMethod, ['mpesa_stk', 'cash', 'bank_transfer', 'card'], true)) {
+                $paymentMethod = 'mpesa_stk';
+            }
+
             $pdo->beginTransaction();
             $updatedCount = 0;
             $totalRevenue = 0.0;
+            $lines = [];
 
             foreach ($selectedItems as $itemId => $quantity) {
-                $stmt = $pdo->prepare('SELECT * FROM inventory_items WHERE id = :id FOR UPDATE');
+                $stmt = $pdo->prepare(
+                    'SELECT ii.*, pv.product_id, pv.sku, pv.stock_quantity, p.name AS product_name, p.minimum_wholesale_quantity
+                     FROM inventory_items ii
+                     LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
+                     LEFT JOIN products p ON p.id = pv.product_id
+                     WHERE ii.id = :id
+                     FOR UPDATE'
+                );
                 $stmt->execute(['id' => $itemId]);
                 $item = $stmt->fetch();
 
@@ -43,53 +64,137 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('One of the selected items no longer exists.');
                 }
 
+                $moq = max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5));
+                if ($quantity < $moq) {
+                    throw new RuntimeException('MOQ for ' . $item['model'] . ' ' . $item['part_type'] . ' is ' . $moq . ' units.');
+                }
+
                 $available = (int) $item['quantity'];
                 if ($available < $quantity) {
                     throw new RuntimeException('Requested quantity for ' . $item['model'] . ' ' . $item['part_type'] . ' exceeds available stock.');
                 }
 
-                $nextQuantity = $available - $quantity;
+                $unitBuyPrice = (float) $item['buy_price'];
+                $unitSellPrice = (float) $item['wholesale_price'] > 0 ? (float) $item['wholesale_price'] : (float) $item['sell_price'];
+                $lineRevenue = $unitSellPrice * $quantity;
+                $totalRevenue += $lineRevenue;
+                $updatedCount += $quantity;
+                $lines[] = [
+                    'item' => $item,
+                    'quantity' => $quantity,
+                    'unit_buy_price' => $unitBuyPrice,
+                    'unit_sell_price' => $unitSellPrice,
+                    'line_revenue' => $lineRevenue,
+                ];
+            }
+
+            $orderNumber = order_number('WHOLE');
+            $order = $pdo->prepare(
+                'INSERT INTO orders
+                 (order_number, order_type, status, payment_status, subtotal, grand_total,
+                  customer_name, customer_email, customer_phone, delivery_address, notes, created_at, updated_at)
+                 VALUES
+                 (:order_number, "wholesale", "confirmed", "unpaid", :subtotal, :grand_total,
+                  :customer_name, :customer_email, :customer_phone, :delivery_address, :notes, :created_at, :updated_at)'
+            );
+            $order->execute([
+                'order_number' => $orderNumber,
+                'subtotal' => $totalRevenue,
+                'grand_total' => $totalRevenue,
+                'customer_name' => $buyerName,
+                'customer_email' => $buyerEmail,
+                'customer_phone' => $buyerPhone,
+                'delivery_address' => $deliveryAddress,
+                'notes' => $businessName !== '' ? 'Business: ' . $businessName : '',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $orderId = (int) $pdo->lastInsertId();
+
+            foreach ($lines as $line) {
+                $item = $line['item'];
+                $quantity = (int) $line['quantity'];
+
+                $nextQuantity = (int) $item['quantity'] - $quantity;
                 $update = $pdo->prepare('UPDATE inventory_items SET quantity = :quantity, status = :status, updated_at = :updated_at WHERE id = :id');
                 $update->execute([
-                    'id' => $itemId,
+                    'id' => (int) $item['id'],
                     'quantity' => $nextQuantity,
                     'status' => $nextQuantity > 0 ? 'in_stock' : 'sold_out',
                     'updated_at' => now(),
                 ]);
 
-                $unitBuyPrice = (float) $item['buy_price'];
-                $unitSellPrice = (float) $item['sell_price'];
-                $lineRevenue = $unitSellPrice * $quantity;
+                if (!empty($item['product_variant_id'])) {
+                    $variantStock = max(0, (int) ($item['stock_quantity'] ?? $item['quantity']) - $quantity);
+                    $variantUpdate = $pdo->prepare('UPDATE product_variants SET stock_quantity = :stock, updated_at = :updated_at WHERE id = :id');
+                    $variantUpdate->execute([
+                        'stock' => $variantStock,
+                        'updated_at' => now(),
+                        'id' => (int) $item['product_variant_id'],
+                    ]);
+                }
+
+                $orderItem = $pdo->prepare(
+                    'INSERT INTO order_items
+                     (order_id, product_id, product_variant_id, item_name, sku, quantity, unit_price, line_total, created_at)
+                     VALUES
+                     (:order_id, :product_id, :product_variant_id, :item_name, :sku, :quantity, :unit_price, :line_total, :created_at)'
+                );
+                $orderItem->execute([
+                    'order_id' => $orderId,
+                    'product_id' => !empty($item['product_id']) ? (int) $item['product_id'] : null,
+                    'product_variant_id' => !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
+                    'item_name' => (string) $item['brand'] . ' ' . (string) $item['model'] . ' ' . (string) $item['part_type'],
+                    'sku' => (string) ($item['sku'] ?? ''),
+                    'quantity' => $quantity,
+                    'unit_price' => (float) $line['unit_sell_price'],
+                    'line_total' => (float) $line['line_revenue'],
+                    'created_at' => now(),
+                ]);
+                $orderItemId = (int) $pdo->lastInsertId();
 
                 $insert = $pdo->prepare(
                     'INSERT INTO inventory_transactions
-                     (inventory_item_id, brand, model, part_type, quantity, unit_buy_price, unit_sell_price,
+                     (inventory_item_id, order_item_id, brand, model, part_type, quantity, unit_buy_price, unit_sell_price,
                       total_cost, total_revenue, profit, source, created_at)
                      VALUES
-                     (:inventory_item_id, :brand, :model, :part_type, :quantity, :unit_buy_price, :unit_sell_price,
+                     (:inventory_item_id, :order_item_id, :brand, :model, :part_type, :quantity, :unit_buy_price, :unit_sell_price,
                       :total_cost, :total_revenue, :profit, :source, :created_at)'
                 );
                 $insert->execute([
-                    'inventory_item_id' => $itemId,
+                    'inventory_item_id' => (int) $item['id'],
+                    'order_item_id' => $orderItemId,
                     'brand' => $item['brand'],
                     'model' => $item['model'],
                     'part_type' => $item['part_type'],
                     'quantity' => $quantity,
-                    'unit_buy_price' => $unitBuyPrice,
-                    'unit_sell_price' => $unitSellPrice,
-                    'total_cost' => $unitBuyPrice * $quantity,
-                    'total_revenue' => $lineRevenue,
-                    'profit' => ($unitSellPrice - $unitBuyPrice) * $quantity,
-                    'source' => 'website_checkout',
+                    'unit_buy_price' => (float) $line['unit_buy_price'],
+                    'unit_sell_price' => (float) $line['unit_sell_price'],
+                    'total_cost' => (float) $line['unit_buy_price'] * $quantity,
+                    'total_revenue' => (float) $line['line_revenue'],
+                    'profit' => ((float) $line['unit_sell_price'] - (float) $line['unit_buy_price']) * $quantity,
+                    'source' => 'wholesale_checkout',
                     'created_at' => now(),
                 ]);
-
-                $updatedCount += $quantity;
-                $totalRevenue += $lineRevenue;
             }
 
+            $payment = $pdo->prepare(
+                'INSERT INTO payments
+                 (order_id, payment_method, amount, currency, status, phone_number, created_at, updated_at)
+                 VALUES
+                 (:order_id, :payment_method, :amount, "KES", "pending", :phone_number, :created_at, :updated_at)'
+            );
+            $payment->execute([
+                'order_id' => $orderId,
+                'payment_method' => $paymentMethod,
+                'amount' => $totalRevenue,
+                'phone_number' => $buyerPhone,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
             $pdo->commit();
-            $message = 'Checkout completed for ' . $updatedCount . ' units. Total value: KES ' . number_format($totalRevenue, 2) . '.';
+            $message = 'Wholesale order ' . $orderNumber . ' created for ' . $updatedCount . ' units. Total value: KES ' . number_format($totalRevenue, 2) . '.';
             $tone = 'success';
         } catch (Throwable $exception) {
             if ($pdo->inTransaction()) {
@@ -104,13 +209,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $brandsStmt = $pdo->query('SELECT DISTINCT brand FROM inventory_items ORDER BY brand ASC');
 $brands = array_map(static fn (array $row): string => (string) $row['brand'], $brandsStmt->fetchAll());
 
-$sql = 'SELECT * FROM inventory_items WHERE quantity > 0';
+$sql = 'SELECT ii.*, p.minimum_wholesale_quantity, pv.sku
+        FROM inventory_items ii
+        LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
+        LEFT JOIN products p ON p.id = pv.product_id
+        WHERE ii.quantity > 0';
 $params = [];
 if ($selectedBrand !== '') {
-    $sql .= ' AND brand = :brand';
+    $sql .= ' AND ii.brand = :brand';
     $params['brand'] = $selectedBrand;
 }
-$sql .= ' ORDER BY brand ASC, model ASC, part_type ASC';
+$sql .= ' ORDER BY ii.brand ASC, ii.model ASC, ii.part_type ASC';
 $itemsStmt = $pdo->prepare($sql);
 $itemsStmt->execute($params);
 $items = $itemsStmt->fetchAll();
@@ -209,8 +318,8 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
                     <td><strong><?= htmlspecialchars((string) $item['part_type']) ?></strong><br><span class="status-pill">Quality checked</span></td>
                     <td><?= htmlspecialchars((string) $item['brand']) ?><br><small><?= htmlspecialchars((string) $item['model']) ?></small></td>
                     <td><?= (int) $item['quantity'] ?></td>
-                    <td>KES <?= number_format((float) $item['sell_price'], 2) ?></td>
-                    <td><span class="status-pill"><?= (int) $item['quantity'] >= 5 ? '5+' : 'Low stock' ?></span></td>
+                    <td>KES <?= number_format((float) ($item['wholesale_price'] > 0 ? $item['wholesale_price'] : $item['sell_price']), 2) ?></td>
+                    <td><span class="status-pill"><?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>+</span></td>
                     <td><input type="number" min="0" max="<?= (int) $item['quantity'] ?>" name="quantities[<?= (int) $item['id'] ?>]" placeholder="0"></td>
                   </tr>
                 <?php endforeach; ?>
@@ -219,12 +328,25 @@ $activeBrands = count(array_unique(array_map(static fn (array $item): string => 
 
             <div class="checkout-flow">
               <div class="payment-card">
+                <h3>Buyer details</h3>
+                <div class="form-grid" style="margin-top: 16px;">
+                  <div><label>Contact name</label><input name="buyer_name" placeholder="Jane Buyer" required></div>
+                  <div><label>Phone</label><input name="buyer_phone" placeholder="07XX XXX XXX" required></div>
+                  <div><label>Email</label><input type="email" name="buyer_email" placeholder="buyer@example.com"></div>
+                  <div><label>Business</label><input name="business_name" placeholder="Repair shop or reseller"></div>
+                  <div class="full"><label>Delivery / pickup notes</label><input name="delivery_address" placeholder="Pickup, rider dispatch, or courier address"></div>
+                </div>
+              </div>
+              <div class="payment-card">
                 <h3>Wholesale checkout notes</h3>
-                <p>Orders deduct inventory immediately and insert inventory transaction records. Payment verification can be connected next.</p>
+                <p>Orders deduct inventory immediately, create a wholesale order, and insert inventory transaction records for profit tracking.</p>
               </div>
               <div class="payment-card">
                 <h3>Payment readiness</h3>
-                <p>M-Pesa STK, card authorization, and admin reconciliation states are ready in the frontend pattern.</p>
+                <label class="payment-method"><input type="radio" name="payment_method" value="mpesa_stk" checked> M-Pesa STK</label>
+                <label class="payment-method"><input type="radio" name="payment_method" value="bank_transfer"> Bank transfer</label>
+                <label class="payment-method"><input type="radio" name="payment_method" value="cash"> Cash on pickup</label>
+                <p>M-Pesa, bank transfer, and cash payments are saved as pending records for admin reconciliation.</p>
                 <button class="btn-primary" type="submit" style="width: 100%; margin-top: 12px;">Submit wholesale checkout</button>
               </div>
             </div>

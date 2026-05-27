@@ -5,9 +5,12 @@ This folder is the recommended main implementation path for the Mobimend PHP/MyS
 ## Pages
 
 - `public/setup_admin.php`
+- `public/admin_products.php`
+- `public/admin_orders.php`
 - `public/admin_inventory.php`
 - `public/admin_repairs.php`
 - `public/repair.php`
+- `public/accessories.php`
 - `public/wholesale.php`
 - `public/logout.php`
 
@@ -27,10 +30,13 @@ This folder is the recommended main implementation path for the Mobimend PHP/MyS
 
 ## Notes
 
-- `admin_inventory.php` manages `inventory_items`.
+- `admin_products.php` manages categories, products, variants, stock adjustments, and synchronized inventory rows.
+- `admin_orders.php` manages retail/wholesale orders, payment status, fulfillment status, and revenue/profit visibility.
+- `admin_inventory.php` remains available for direct legacy `inventory_items` edits.
 - `admin_repairs.php` manages `repair_bookings`.
 - `repair.php` creates repair bookings directly in MySQL.
-- `wholesale.php` reads from `inventory_items` and records checkout activity in `inventory_transactions`.
+- `accessories.php` reads live product variants, creates retail orders, payment records, and inventory transactions.
+- `wholesale.php` reads from `inventory_items`, enforces MOQ, creates wholesale orders, and records checkout activity in `inventory_transactions`.
 
 ## Current Data Model
 
