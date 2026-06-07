@@ -1,0 +1,25 @@
+{
+    "name": "mobimend/php-backend",
+    "description": "Mobimend Spares — phone repair, wholesale, and retail platform",
+    "type": "project",
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mobimend\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mobimend\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

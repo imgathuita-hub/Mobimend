@@ -1,5 +1,5 @@
 -- Inventory safety migration for existing Mobimend MySQL databases.
--- Apply after taking a database backup.
+
 
 ALTER TABLE products
   ADD COLUMN IF NOT EXISTS media_url VARCHAR(512) NULL AFTER status;
