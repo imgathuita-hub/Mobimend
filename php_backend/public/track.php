@@ -22,7 +22,7 @@
       <div class="track-card">
         <p class="section-kicker"><i class="fa-solid fa-satellite-dish"></i> Real-time style status</p>
         <h1 class="section-title">Track a repair, order, or payment.</h1>
-        <p class="section-copy">This frontend is ready for polling the backend every few seconds once status endpoints are connected.</p>
+        <p class="section-copy">Mobimend is polling order requests every few seconds once endpoints are connected.</p>
         <form id="trackForm" class="form-grid" style="margin-top: 20px;">
           <div class="full"><label>Reference number</label><input placeholder="MB-102938 or booking ID"></div>
           <div><label>Phone number</label><input placeholder="07XX XXX XXX"></div>

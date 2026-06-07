@@ -681,7 +681,8 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
             <div class="auth-notice <?= htmlspecialchars($noticeTone) ?>"><?= htmlspecialchars($notice) ?></div>
           <?php endif; ?>
 
-          <form method="post" class="auth-panel <?= $mode === 'login' ? 'active' : '' ?>" data-panel="login">
+          <form method="post" class="auth-panel <?= $mode === 'login' ? 'active' : '' ?>
+        <?= csrf_field() ?>" data-panel="login">
             <input type="hidden" name="action" value="login">
             <h1 data-login-title>Welcome back</h1>
             <p data-login-copy>Sign in to track repairs, orders, payments, warranties, and saved service history.</p>
@@ -707,7 +708,8 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
             <p class="login-signup-copy" data-customer-signup-copy>New customer? <a href="#" data-auth-panel="signup">Create your Mobimend ID</a></p>
           </form>
 
-          <form method="post" class="auth-panel <?= $mode === 'signup' ? 'active' : '' ?>" data-panel="signup">
+          <form method="post" class="auth-panel <?= $mode === 'signup' ? 'active' : '' ?>
+        <?= csrf_field() ?>" data-panel="signup">
             <input type="hidden" name="action" value="signup">
             <h1>Create customer ID</h1>
             <p>Save repair history, receipts, warranty records, and faster checkout details.</p>
@@ -742,7 +744,8 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
             <p class="login-signup-copy"><a href="#" data-auth-panel="login">Already have an account? Login</a></p>
           </form>
 
-          <form method="post" class="auth-panel <?= $mode === 'forgot' ? 'active' : '' ?>" data-panel="forgot">
+          <form method="post" class="auth-panel <?= $mode === 'forgot' ? 'active' : '' ?>
+        <?= csrf_field() ?>" data-panel="forgot">
             <input type="hidden" name="action" value="forgot">
             <h1>Reset password</h1>
             <p>Enter your email and we will prepare a one-hour reset link.</p>
@@ -753,7 +756,8 @@ $mode = $resetToken !== '' && $showAuth ? 'reset' : $mode;
             <p class="login-signup-copy"><a href="#" data-auth-panel="login">Back to login</a></p>
           </form>
 
-          <form method="post" class="auth-panel <?= $mode === 'reset' ? 'active' : '' ?>" data-panel="reset">
+          <form method="post" class="auth-panel <?= $mode === 'reset' ? 'active' : '' ?>
+        <?= csrf_field() ?>" data-panel="reset">
             <input type="hidden" name="action" value="reset">
             <input type="hidden" name="token" value="<?= htmlspecialchars($resetToken) ?>">
             <h1>Choose new password</h1>

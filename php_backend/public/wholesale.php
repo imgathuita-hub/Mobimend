@@ -44,6 +44,7 @@ function wholesale_redirect(string $message, string $tone = 'success'): never
 $hasCatalogChannel = wholesale_product_column_exists($pdo, 'catalog_channel');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $action = (string) ($_POST['action'] ?? 'checkout');
 
     if ($action === 'add_cart') {
@@ -432,6 +433,7 @@ if ($wholesaleCart !== []) {
               <p class="muted">Your wholesale cart is empty. Add MOQ quantities from the catalog.</p>
             <?php else: ?>
               <form method="post" action="#cart" class="cart-list">
+        <?= csrf_field() ?>
                 <input type="hidden" name="action" value="update_cart">
                 <?php foreach ($cartItems as $cartItem): ?>
                   <?php $moq = max(1, (int) ($cartItem['minimum_wholesale_quantity'] ?? 5)); ?>
@@ -480,6 +482,7 @@ if ($wholesaleCart !== []) {
                     <td><span class="status-pill"><?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>+</span></td>
                     <td>
                       <form method="post" action="#cart" class="wholesale-add-form">
+        <?= csrf_field() ?>
                         <input type="hidden" name="action" value="add_cart">
                         <input type="hidden" name="item_id" value="<?= (int) $item['id'] ?>">
                         <input type="number" min="<?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>" max="<?= (int) $item['quantity'] ?>" name="quantity" value="<?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>">
@@ -492,6 +495,7 @@ if ($wholesaleCart !== []) {
             </table>
 
             <form method="post" action="#live-catalog" class="checkout-flow">
+        <?= csrf_field() ?>
               <input type="hidden" name="action" value="checkout">
               <div class="payment-card">
                 <h3>Buyer details</h3>

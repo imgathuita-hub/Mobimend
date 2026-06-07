@@ -30,7 +30,7 @@
     <div class="section-inner">
       <p class="section-kicker"><i class="fa-solid fa-book-open"></i> Repair help center</p>
       <h1 class="section-title">Useful phone repair information before customers book.</h1>
-      <p class="section-copy">The blog should behave like a searchable help desk: symptoms, parts quality, repair expectations, payment help, and wholesale buying guidance.</p>
+      <p class="section-copy">The blog is a searchable help desk: symptoms, parts quality, repair expectations, payment help, and wholesale buying guidance.</p>
 
       <div class="blog-tools">
         <input type="search" placeholder="Search: iPhone battery swelling, Tecno screen price, charging port issue...">

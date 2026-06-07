@@ -542,6 +542,7 @@ $grandTotal = $cartTotal + $deliveryFee;
                   <div class="price-row">
                     <span class="price">KES <?= number_format((float) $product['retail_price'], 2) ?></span>
                     <form method="post" action="accessories.php#cart" class="add-cart-form">
+        <?= csrf_field() ?>
                       <input type="hidden" name="action" value="add_cart">
                       <input type="hidden" name="variant_id" value="<?= (int) $product['id'] ?>">
                       <input type="number" min="1" max="<?= $stock ?>" name="quantity" value="1" <?= $stock <= 0 ? 'disabled' : '' ?>>
@@ -571,6 +572,7 @@ $grandTotal = $cartTotal + $deliveryFee;
               <p class="muted">Your cart is empty. Add accessories from the catalog.</p>
             <?php else: ?>
               <form method="post" action="#cart" class="cart-list">
+        <?= csrf_field() ?>
                 <input type="hidden" name="action" value="update_cart">
                 <?php foreach ($cartItems as $item): ?>
                   <div class="cart-line compact">
@@ -608,6 +610,7 @@ $grandTotal = $cartTotal + $deliveryFee;
               <p class="section-kicker"><i class="fa-solid fa-credit-card"></i> Checkout and payment</p>
               <h2 class="section-title">Create an order and reserve stock immediately.</h2>
               <form method="post" class="checkout-flow">
+        <?= csrf_field() ?>
                 <input type="hidden" name="action" value="checkout">
                 <div class="payment-card">
                   <h3>Customer and delivery</h3>

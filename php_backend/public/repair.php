@@ -1,6 +1,9 @@
-<?php
+  <?php
 
 declare(strict_types=1);
+
+require __DIR__ . '/session_bootstrap.php';
+session_start();
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
@@ -128,6 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
 
           <form method="post" action="#repair-booking" class="php-form-grid">
+        <?= csrf_field() ?>
+        <?= csrf_field() ?>
             <div>
               <label for="customer_name">Full name</label>
               <input id="customer_name" name="customer_name" value="<?= htmlspecialchars($form['customer_name']) ?>" required>
