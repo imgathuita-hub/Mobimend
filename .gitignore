@@ -1,6 +1,38 @@
+# ── Dependencies ──────────────────────────────────────────────
 node_modules/
-server/node_modules/
-server/.env
+vendor/
+
+# ── Environment / secrets (NEVER commit real .env files) ──────
 .env
+.env.*
+!.env.example
+php_backend/.env
+php_backend/.env.*
+!php_backend/.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# ── PHP session & runtime storage ─────────────────────────────
 storage/php-sessions/
 storage/backups/
+storage/logs/
+
+# ── Uploaded files (serve from CDN in production) ─────────────
+php_backend/public/uploads/products/*
+!php_backend/public/uploads/products/.gitkeep
+storage/uploads/**/*
+!storage/uploads/**/.gitkeep
+
+# ── OS & editor noise ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+backend/server.log
+backend/server.err.log
