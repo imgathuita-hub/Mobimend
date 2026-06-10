@@ -31,128 +31,13 @@ $$('[data-slot]').forEach((slot) => {
   });
 });
 
-const products = [
-  { id: 'case-armor', name: 'Armor Mag Case', category: 'Cases', price: 1800, icon: 'case', stock: 'In stock', compatible: 'iPhone, Samsung, Tecno' },
-  { id: 'fast-charger', name: '33W Fast Charger', category: 'Chargers', price: 2200, icon: 'charger', stock: 'In stock', compatible: 'USB-C phones' },
-  { id: 'glass-pro', name: '9D Glass Protector', category: 'Protectors', price: 700, icon: 'case', stock: 'Low stock', compatible: 'Most models' },
-  { id: 'buds-air', name: 'Mobimend Air Buds', category: 'Audio', price: 3500, icon: 'earbuds', stock: 'In stock', compatible: 'Bluetooth devices' },
-  { id: 'type-c-cable', name: 'Braided Type-C Cable', category: 'Cables', price: 650, icon: 'charger', stock: 'In stock', compatible: 'USB-C phones' },
-  { id: 'power-bank', name: '10000mAh Power Bank', category: 'Power', price: 3900, icon: 'charger', stock: 'In stock', compatible: 'All devices' },
-  { id: 'privacy-glass', name: 'Privacy Screen Guard', category: 'Protectors', price: 1100, icon: 'case', stock: 'In stock', compatible: 'iPhone, Samsung' },
-  { id: 'clear-case', name: 'Crystal Clear Case', category: 'Cases', price: 1200, icon: 'case', stock: 'In stock', compatible: 'Popular models' }
-];
-
-let cart = [];
-
-function renderProducts(filter = 'All', search = '') {
-  const grid = $('#productGrid');
-  if (!grid) return;
-
-  const term = search.toLowerCase();
-  const filtered = products.filter((product) => {
-    const matchesCategory = filter === 'All' || product.category === filter;
-    const haystack = `${product.name} ${product.category} ${product.compatible}`.toLowerCase();
-    return matchesCategory && haystack.includes(term);
-  });
-
-  grid.innerHTML = filtered.map((product) => `
-    <article class="product-card" data-product-card>
-      <div class="product-art">
-        <div class="css-accessory ${product.icon}" aria-hidden="true"></div>
-      </div>
-      <div class="product-body">
-        <div class="blog-meta">
-          <span class="status-pill">${product.category}</span>
-          <span class="status-pill">${product.stock}</span>
-        </div>
-        <h3>${product.name}</h3>
-        <p>${product.compatible}</p>
-        <div class="price-row">
-          <span class="price">KES ${product.price.toLocaleString()}</span>
-          <button class="btn-dark" type="button" data-add-cart="${product.id}"><i class="fa-solid fa-plus"></i> Add</button>
-        </div>
-      </div>
-    </article>
-  `).join('');
-}
-
-function renderCart() {
-  const cartItems = $('#cartItems');
-  const cartTotal = $('#cartTotal');
-  const cartCount = $('#cartCount');
-  if (!cartItems || !cartTotal || !cartCount) return;
-
-  cartItems.innerHTML = cart.length
-    ? cart.map((item) => `
-      <div class="cart-item">
-        <div>
-          <strong>${item.name}</strong>
-          <p>KES ${item.price.toLocaleString()} x ${item.qty}</p>
-        </div>
-        <button class="btn-ghost" type="button" data-remove-cart="${item.id}">Remove</button>
-      </div>
-    `).join('')
-    : '<p>Your cart is waiting for accessories.</p>';
-
-  const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  cartTotal.textContent = `KES ${total.toLocaleString()}`;
-  cartCount.textContent = String(cart.reduce((sum, item) => sum + item.qty, 0));
-}
-
-function addCart(id) {
-  const product = products.find((item) => item.id === id);
-  if (!product) return;
-
-  const existing = cart.find((item) => item.id === id);
-  if (existing) {
-    existing.qty += 1;
-  } else {
-    cart.push({ ...product, qty: 1 });
-  }
-  renderCart();
-  $('#cartDrawer')?.classList.add('open');
-}
-
 document.addEventListener('click', (event) => {
-  const addButton = event.target.closest('[data-add-cart]');
-  const removeButton = event.target.closest('[data-remove-cart]');
   const openCart = event.target.closest('[data-open-cart]');
   const closeCart = event.target.closest('[data-close-cart]');
 
-  if (addButton) addCart(addButton.dataset.addCart);
-  if (removeButton) {
-    cart = cart.filter((item) => item.id !== removeButton.dataset.removeCart);
-    renderCart();
-  }
   if (openCart) $('#cartDrawer')?.classList.add('open');
   if (closeCart) $('#cartDrawer')?.classList.remove('open');
 });
-
-const productSearch = $('#productSearch');
-const categoryButtons = $$('[data-category]');
-const serverProductGrid = $('#productGrid')?.dataset.serverProducts;
-
-if ($('#productGrid') && !serverProductGrid) {
-  renderProducts();
-  renderCart();
-}
-
-if (!serverProductGrid) {
-  categoryButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      categoryButtons.forEach((item) => item.classList.remove('active'));
-      button.classList.add('active');
-      renderProducts(button.dataset.category, productSearch?.value || '');
-    });
-  });
-
-  if (productSearch) {
-    productSearch.addEventListener('input', () => {
-      const active = $('[data-category].active')?.dataset.category || 'All';
-      renderProducts(active, productSearch.value);
-    });
-  }
-}
 
 $$('[data-payment-method]').forEach((method) => {
   method.addEventListener('change', () => {
@@ -169,3 +54,115 @@ if (trackForm) {
     $('#trackingResult')?.removeAttribute('hidden');
   });
 }
+
+// ── Phase 2: Live search debounce ────────────────────────────────────────────
+(function () {
+  const searchInput = document.getElementById('productSearch');
+  if (!searchInput || !document.querySelector('[data-server-products]')) return;
+
+  let debounceTimer;
+  searchInput.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    const query = this.value.trim();
+
+    // If server-rendered products exist, submit the form after 380ms pause
+    debounceTimer = setTimeout(() => {
+      const form = this.closest('form');
+      if (form) form.submit();
+    }, 380);
+  });
+})();
+
+// ── Phase 2: Nav cart badge count sync ──────────────────────────────────────
+(function () {
+  function updateNavBadge() {
+    const badge = document.getElementById('navCartBadge');
+    if (!badge) return;
+
+    // Count items from any cart-v2-count or cartCountBadge on the page
+    const cartCountEl = document.getElementById('cartCountBadge');
+    if (cartCountEl) {
+      const count = parseInt(cartCountEl.textContent || '0', 10);
+      badge.textContent = count > 0 ? String(count) : '';
+      badge.dataset.count = String(count);
+    }
+  }
+
+  // Run on load and after any form submission that updates the page
+  updateNavBadge();
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[type="submit"]');
+    if (btn) setTimeout(updateNavBadge, 100);
+  });
+})();
+
+// ── Phase 2: Payment option highlight (no-JS fallback works too) ─────────────
+(function () {
+  document.querySelectorAll('.pay-option').forEach(function (option) {
+    option.addEventListener('click', function () {
+      const radio = this.querySelector('input[type=radio]');
+      if (radio) radio.checked = true;
+    });
+  });
+})();
+
+// ── Phase 2: Add-to-cart button feedback ─────────────────────────────────────
+(function () {
+  document.querySelectorAll('.card-add-btn[type=submit]').forEach(function (btn) {
+    btn.closest('form') && btn.closest('form').addEventListener('submit', function () {
+      btn.textContent = '✓ Added';
+      btn.classList.add('added');
+    });
+  });
+})();
+
+// ── Phase 2: Cart drawer open/close ──────────────────────────────────────────
+(function () {
+  const toggle  = document.getElementById('cartDrawerToggle');
+  const drawer  = document.getElementById('cartDrawer');
+  const overlay = document.getElementById('cartDrawerOverlay');
+  const closeBtn= document.getElementById('cartDrawerClose');
+  const goCheckout = document.getElementById('cartGoCheckout');
+
+  if (!toggle || !drawer) return;
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    overlay && overlay.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    overlay && overlay.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  toggle.addEventListener('click', openDrawer);
+  closeBtn && closeBtn.addEventListener('click', closeDrawer);
+  overlay && overlay.addEventListener('click', closeDrawer);
+
+  // Close on Escape key
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeDrawer();
+  });
+
+  // If cart has items on page load, auto-open if URL hash is #cart
+  if (window.location.hash === '#cart') openDrawer();
+
+  // Close drawer and scroll to checkout when "Checkout" button is clicked
+  goCheckout && goCheckout.addEventListener('click', function () {
+    closeDrawer();
+  });
+
+  // Auto-open cart drawer after add-to-cart form submits
+  // (the page reloads with #cart hash due to PHP redirect)
+  if (window.location.hash === '#cart' || document.referrer.includes('accessories.php')) {
+    const count = parseInt(
+      (document.getElementById('cartCountBadge') || {}).textContent || '0', 10
+    );
+    if (count > 0) openDrawer();
+  }
+})();

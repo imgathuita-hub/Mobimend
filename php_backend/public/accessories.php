@@ -374,14 +374,15 @@ $categories = $pdo->query('SELECT * FROM product_categories WHERE is_active = 1 
 $shopCountSql = 'SELECT COUNT(*)
         FROM product_variants pv
         INNER JOIN products p ON p.id = pv.product_id
-        WHERE pv.is_active = 1 AND p.status IN ("active", "out_of_stock")';
+        WHERE pv.is_active = 1 AND pv.stock_quantity > 0 AND p.status IN ("active", "out_of_stock")';
 if ($hasCatalogChannel) {
     $shopCountSql .= ' AND p.catalog_channel IN ("shop", "both")';
 }
 $totalShopProducts = (int) $pdo->query($shopCountSql)->fetchColumn();
 $params = [];
 $catalogChannelSelect = $hasCatalogChannel ? 'p.catalog_channel' : '"shop" AS catalog_channel';
-$sql = 'SELECT pv.*, p.name, p.description, p.brand, p.compatible_brand, p.compatible_model, p.minimum_wholesale_quantity, p.media_url, ' . $catalogChannelSelect . ',
+$sql = 'SELECT pv.*, pv.stock_quantity AS total_stock, pv.id AS default_variant_id,
+               p.name, p.description, p.brand, p.compatible_brand, p.compatible_model, p.minimum_wholesale_quantity, p.media_url, ' . $catalogChannelSelect . ',
                pc.id AS category_id, pc.name AS category_name
         FROM product_variants pv
         INNER JOIN products p ON p.id = pv.product_id
@@ -445,17 +446,23 @@ $grandTotal = $cartTotal + $deliveryFee;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Accessories Shop | Mobimend Spares</title>
+  <meta name="description" content="Shop phone accessories — cases, chargers, screen protectors, earbuds and more. Fast delivery across Kenya.">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="shop_overhaul.css">
 </head>
 <body>
+
+  <!-- ── Nav ──────────────────────────────────────────────────── -->
   <nav class="site-nav">
     <a class="nav-left" href="index.php">
       <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
       <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Accessories shop</p></div>
     </a>
-    <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
+    <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation">
+      <i class="fa-solid fa-bars"></i>
+    </button>
     <ul class="nav-links" id="nav-links">
       <li><a href="index.php">Home</a></li>
       <li><a href="repair.php">Repair</a></li>
@@ -464,288 +471,430 @@ $grandTotal = $cartTotal + $deliveryFee;
       <li><a href="blog.php">Blog</a></li>
       <li><a href="track.php">Track</a></li>
       <li><a href="account.php">Account</a></li>
+      <li>
+        <button class="nav-cart-btn" id="cartDrawerToggle" type="button" aria-label="View cart">
+          <i class="fa-solid fa-cart-shopping"></i>
+          Cart
+          <span class="nav-cart-badge" id="navCartBadge"
+                data-count="<?= $cartQuantity ?>"><?= $cartQuantity > 0 ? $cartQuantity : '' ?></span>
+        </button>
+      </li>
     </ul>
   </nav>
 
+  <!-- ── Shop hero ─────────────────────────────────────────────── -->
+  <section class="shop-hero">
+    <div class="shop-hero-inner">
+      <div>
+        <p class="section-kicker"><i class="fa-solid fa-microchip"></i> Admin-curated live catalog</p>
+        <h1 class="shop-hero-title">Tech essentials tuned for real repairs.</h1>
+        <p class="shop-hero-sub shop-hero-live-copy">Admin-added accessories, parts, and device essentials from Mobimend's live inventory.</p>
+        <div class="shop-hero-actions">
+          <a class="shop-hero-primary" href="#productGrid"><i class="fa-solid fa-bolt"></i> Shop live stock</a>
+          <a class="shop-hero-secondary" href="repair.php"><i class="fa-solid fa-screwdriver-wrench"></i> Book repair</a>
+        </div>
+        <p class="shop-hero-sub">Cases, chargers, protectors, audio — all backed by live stock. Order now, pickup in Juja or get it delivered.</p>
+      </div>
+      <div class="shop-hero-lab">
+        <div class="lab-screen">
+          <span class="lab-dot"></span>
+          <strong><?= number_format($totalShopProducts) ?></strong>
+          <small>sellable variants online</small>
+        </div>
+        <div class="shop-trust">
+        <div class="shop-trust-item"><i class="fa-solid fa-shield-halved"></i> 90-day warranty</div>
+        <div class="shop-trust-item"><i class="fa-solid fa-mobile-screen-button"></i> M-Pesa ready</div>
+        <div class="shop-trust-item"><i class="fa-solid fa-truck-fast"></i> Same-day local delivery</div>
+        <div class="shop-trust-item"><i class="fa-solid fa-circle-check"></i> Live stock only</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Alert ─────────────────────────────────────────────────── -->
+  <?php if ($message !== ''): ?>
+    <div class="alert-banner <?= htmlspecialchars($tone) ?>">
+      <i class="fa-solid <?= $tone === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?>"></i>
+      <?= htmlspecialchars($message) ?>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($createdOrder): ?>
+    <div class="alert-banner success" style="margin-top:12px">
+      <strong>Order <?= htmlspecialchars($createdOrder['number']) ?> confirmed!</strong>
+      KES <?= number_format((float)$createdOrder['total'], 2) ?> — stock reserved.
+      <a href="track.php" style="margin-left:10px;text-decoration:underline">Track it →</a>
+    </div>
+  <?php endif; ?>
+
+  <!-- ── Search & filter toolbar ───────────────────────────────── -->
+  <form method="get" action="accessories.php">
+    <div class="shop-toolbar-v2">
+      <div class="shop-search-wrap">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input class="shop-search-input" id="productSearch" name="q" type="search"
+               value="<?= htmlspecialchars($search) ?>"
+               placeholder="Search by name, brand, compatibility…"
+               autocomplete="off">
+      </div>
+      <select class="shop-select" name="category">
+        <option value="0">All categories</option>
+        <?php foreach ($categories as $cat): ?>
+          <option value="<?= (int)$cat['id'] ?>" <?= $selectedCategory === (int)$cat['id'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars((string)$cat['name']) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <button class="shop-filter-btn" type="submit">
+        <i class="fa-solid fa-sliders"></i> Filter
+      </button>
+      <?php if ($filtersActive): ?>
+        <a class="shop-reset-btn" href="accessories.php">
+          <i class="fa-solid fa-xmark"></i> Clear
+        </a>
+      <?php endif; ?>
+    </div>
+
+    <!-- Category pills -->
+    <div class="shop-cat-pills">
+      <a class="shop-cat-pill <?= $selectedCategory === 0 && $search === '' ? 'active' : '' ?>"
+         href="accessories.php">All</a>
+      <?php foreach ($categories as $cat): ?>
+        <a class="shop-cat-pill <?= $selectedCategory === (int)$cat['id'] ? 'active' : '' ?>"
+           href="accessories.php?category=<?= (int)$cat['id'] ?>">
+          <?= htmlspecialchars((string)$cat['name']) ?>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  </form>
+
+  <!-- ── Main commerce layout ──────────────────────────────────── -->
   <main>
-    <section class="section alt">
-      <div class="section-inner">
-        <p class="section-kicker"><i class="fa-solid fa-bag-shopping"></i> Live retail catalog</p>
-        <h1 class="section-title">Accessories now sell from real stock.</h1>
-        <p class="section-copy">Search, choose quantities, and create an order that reserves inventory and opens a payment record for verification.</p>
+    <!-- Drawer overlay -->
+    <div class="cart-drawer-overlay" id="cartDrawerOverlay"></div>
 
-        <?php if ($message !== ''): ?>
-          <div class="php-banner <?= htmlspecialchars($tone) ?>"><?= htmlspecialchars($message) ?></div>
-        <?php endif; ?>
+    <div class="shop-layout-v2" style="padding-bottom: 48px;">
 
-        <?php if ($createdOrder): ?>
-          <div class="trust-strip">
-            <div class="trust-item"><strong><?= htmlspecialchars($createdOrder['number']) ?></strong><span>order number</span></div>
-            <div class="trust-item"><strong>KES <?= number_format((float) $createdOrder['total'], 2) ?></strong><span>pending payment</span></div>
-            <div class="trust-item"><strong>Confirmed</strong><span>stock reserved</span></div>
-          </div>
-        <?php endif; ?>
+      <!-- Product grid -->
+      <section aria-label="Product catalog">
+        <div class="product-count-bar">
+          <p>
+            <?php if ($filtersActive): ?>
+              <?= number_format(count($products)) ?> result<?= count($products) !== 1 ? 's' : '' ?>
+              <?= $search !== '' ? 'for "' . htmlspecialchars($search) . '"' : '' ?>
+            <?php else: ?>
+              <?= number_format(count($products)) ?> products
+            <?php endif; ?>
+          </p>
+        </div>
 
-        <form method="get" class="shop-toolbar">
-          <input id="productSearch" name="q" type="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search cases, chargers, protectors, screens...">
-          <select name="category">
-            <option value="0">All categories</option>
-            <?php foreach ($categories as $category): ?>
-              <option value="<?= (int) $category['id'] ?>" <?= $selectedCategory === (int) $category['id'] ? 'selected' : '' ?>><?= htmlspecialchars((string) $category['name']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <button class="btn-dark" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Filter</button>
-          <a class="btn-ghost" href="accessories.php">Reset</a>
-        </form>
-
-        <div id="retailCheckout">
-          <div class="shop-commerce-layout">
-          <div>
-          <div class="shop-grid-head">
-            <div>
-              <h2>Products</h2>
-              <p>Browse available accessories and add them to your cart.</p>
+        <div class="product-grid-v2" id="productGrid" data-server-products aria-live="polite">
+          <?php if ($products === []): ?>
+            <div class="shop-empty">
+              <i class="fa-regular fa-face-sad-tear"></i>
+              <h3><?= $filtersActive ? 'No products match these filters' : 'No accessories yet' ?></h3>
+              <p><?= $filtersActive ? 'Try clearing your filters.' : 'Check back soon.' ?></p>
+              <?php if ($filtersActive): ?>
+                <a class="btn-dark" href="accessories.php" style="margin-top:14px;display:inline-flex;align-items:center;gap:7px">
+                  <i class="fa-solid fa-rotate-left"></i> Show all
+                </a>
+              <?php endif; ?>
             </div>
-          </div>
-          <div id="productGrid" class="product-grid" data-server-products aria-live="polite">
-            <?php if ($products === []): ?>
-              <article class="product-card">
-                <div class="product-body">
-                  <h3><?= $filtersActive && $totalShopProducts > 0 ? 'No products match these filters' : 'No accessories available yet' ?></h3>
-                  <p>
-                    <?php if ($filtersActive && $totalShopProducts > 0): ?>
-                      Clear the search/category filter to see all shop products.
-                    <?php else: ?>
-                      Please check back soon.
-                    <?php endif; ?>
+          <?php endif; ?>
+
+          <?php foreach ($products as $product): ?>
+            <?php
+              $stock    = (int)$product['total_stock'];
+              $price    = (float)$product['retail_price'];
+              $imgUrl   = product_image_url($product['media_url'] ?? null);
+              $fallback = product_image_url(null);
+              $varId    = (int)$product['default_variant_id'];
+
+              if ($stock > 10)     { $stockLabel = 'In stock';   $stockClass = 'in-stock';  }
+              elseif ($stock > 0)  { $stockLabel = 'Low stock';  $stockClass = 'low-stock'; }
+              else                 { $stockLabel = 'Sold out';   $stockClass = 'sold-out';  }
+            ?>
+            <article class="product-card-v2">
+              <div class="card-img">
+                <?php if ($product['media_url'] && strpos((string)$product['media_url'], 'LOGO') === false): ?>
+                  <img src="<?= htmlspecialchars($imgUrl) ?>"
+                       alt="<?= htmlspecialchars((string)$product['name']) ?>"
+                       loading="lazy"
+                       onerror="this.parentElement.innerHTML='<div class=\"card-img-placeholder\"><i class=\"fa-solid fa-mobile-screen-button\"></i></div>'">
+                <?php else: ?>
+                  <div class="card-img-placeholder">
+                    <i class="fa-solid fa-mobile-screen-button"></i>
+                  </div>
+                <?php endif; ?>
+                <span class="stock-badge <?= $stockClass ?>"><?= $stockLabel ?></span>
+              </div>
+              <div class="card-body">
+                <div class="card-category">
+                  <?= htmlspecialchars((string)($product['category_name'] ?? 'Accessories')) ?>
+                </div>
+                <h3 class="card-name"><?= htmlspecialchars((string)$product['name']) ?></h3>
+                <?php if (trim((string)$product['variant_name']) !== ''): ?>
+                  <p class="card-variant">
+                    <i class="fa-solid fa-code-branch"></i>
+                    <?= htmlspecialchars((string)$product['variant_name']) ?>
                   </p>
-                  <?php if ($filtersActive): ?>
-                    <p style="margin-top: 14px;"><a class="btn-dark" href="accessories.php">Show all products</a></p>
+                <?php endif; ?>
+                <?php $compat = trim((string)$product['compatible_brand'] . ' ' . (string)$product['compatible_model']); ?>
+                <?php if ($compat !== ''): ?>
+                  <p class="card-compat">
+                    <i class="fa-solid fa-circle-check" style="color:var(--shop-green);font-size:.8rem"></i>
+                    <?= htmlspecialchars($compat) ?>
+                  </p>
+                <?php endif; ?>
+                <?php if (trim((string)$product['sku']) !== ''): ?>
+                  <p class="card-sku">SKU <?= htmlspecialchars((string)$product['sku']) ?></p>
+                <?php endif; ?>
+                <div class="card-footer">
+                  <span class="card-price">KES <?= number_format($price, 2) ?></span>
+                  <?php if ($stock > 0): ?>
+                    <form method="post" action="accessories.php#cart" style="margin:0">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="action"     value="add_cart">
+                      <input type="hidden" name="variant_id" value="<?= $varId ?>">
+                      <input type="hidden" name="quantity"   value="1">
+                      <button class="card-add-btn" type="submit">
+                        <i class="fa-solid fa-cart-plus"></i> Add
+                      </button>
+                    </form>
+                  <?php else: ?>
+                    <button class="card-add-btn" disabled>Sold out</button>
                   <?php endif; ?>
                 </div>
-              </article>
-            <?php endif; ?>
-            <?php foreach ($products as $product): ?>
-              <?php $stock = (int) $product['stock_quantity']; ?>
-              <article class="product-card" data-product-card>
-                <div class="product-art product-photo">
-                  <img src="<?= htmlspecialchars(product_image_url($product['media_url'] ?? null)) ?>" alt="<?= htmlspecialchars((string) $product['name']) ?>" onerror="this.src='<?= htmlspecialchars(product_image_url(null)) ?>'">
-                </div>
-                <div class="product-body">
-                  <div class="blog-meta">
-                    <span class="status-pill"><?= htmlspecialchars((string) ($product['category_name'] ?? 'Catalog')) ?></span>
-                    <span class="status-pill"><?= $stock > 0 ? number_format($stock) . ' in stock' : 'Sold out' ?></span>
-                  </div>
-                  <h3><?= htmlspecialchars((string) $product['name']) ?></h3>
-                  <p><?= htmlspecialchars(trim((string) $product['compatible_brand'] . ' ' . (string) $product['compatible_model'])) ?></p>
-                  <p><?= htmlspecialchars((string) $product['variant_name']) ?> · <?= htmlspecialchars((string) $product['sku']) ?></p>
-                  <div class="price-row">
-                    <span class="price">KES <?= number_format((float) $product['retail_price'], 2) ?></span>
-                    <form method="post" action="accessories.php#cart" class="add-cart-form">
-        <?= csrf_field() ?>
-                      <input type="hidden" name="action" value="add_cart">
-                      <input type="hidden" name="variant_id" value="<?= (int) $product['id'] ?>">
-                      <input type="number" min="1" max="<?= $stock ?>" name="quantity" value="1" <?= $stock <= 0 ? 'disabled' : '' ?>>
-                      <button class="btn-dark" type="submit" data-add-confirm <?= $stock <= 0 ? 'disabled' : '' ?>><i class="fa-solid fa-cart-plus"></i> Add</button>
-                      <div class="add-cart-confirm" hidden>
-                        <span>Add this item to cart?</span>
-                        <button class="btn-dark" type="button" data-confirm-add>Confirm</button>
-                        <button class="btn-ghost" type="button" data-cancel-add>Cancel</button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              </article>
-            <?php endforeach; ?>
+              </div>
+            </article>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <!-- ── Cart panel ─────────────────────────────────────────── -->
+    </div><!-- end shop-layout-v2 -->
+
+    <!-- ── Cart drawer (outside grid — full-height slide-in) ───── -->
+    <aside class="cart-v2" id="cartDrawer" aria-label="Shopping cart" aria-hidden="true">
+      <div class="cart-v2-head">
+        <h2 class="cart-v2-title">
+          <i class="fa-solid fa-cart-shopping"></i>
+          Your cart
+        </h2>
+        <div class="cart-v2-head-right">
+          <span class="cart-v2-count" id="cartCountBadge"><?= $cartQuantity ?></span>
+          <button class="cart-close-btn" id="cartDrawerClose" aria-label="Close cart">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="cart-v2-body">
+        <?php if ($cartItems === []): ?>
+          <div class="cart-v2-empty">
+            <i class="fa-regular fa-bag-shopping"></i>
+            <p>Your cart is empty.<br>Add accessories to get started.</p>
           </div>
+        <?php else: ?>
+          <form method="post" action="accessories.php" id="updateCartForm">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="update_cart">
+            <?php foreach ($cartItems as $item): ?>
+              <div class="cart-line-v2">
+                <img src="<?= htmlspecialchars(product_image_url($item['media_url'] ?? null)) ?>"
+                     alt="<?= htmlspecialchars((string)$item['name']) ?>"
+                     onerror="this.style.background='#eaf7fb'">
+                <div>
+                  <div class="line-name"><?= htmlspecialchars((string)$item['name']) ?></div>
+                  <div class="line-price">KES <?= number_format((float)$item['retail_price'], 2) ?></div>
+                </div>
+                <input class="cart-qty-input"
+                       type="number"
+                       min="0"
+                       max="<?= (int)$item['stock_quantity'] ?>"
+                       name="cart_quantities[<?= (int)$item['id'] ?>]"
+                       value="<?= (int)$item['cart_quantity'] ?>">
+                <button class="cart-remove"
+                        type="submit"
+                        form="remove-<?= (int)$item['id'] ?>"
+                        aria-label="Remove <?= htmlspecialchars((string)$item['name']) ?>">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            <?php endforeach; ?>
+          </form>
+
+          <?php foreach ($cartItems as $item): ?>
+            <form id="remove-<?= (int)$item['id'] ?>" method="post" action="accessories.php" hidden>
+              <?= csrf_field() ?>
+              <input type="hidden" name="action"     value="remove_cart">
+              <input type="hidden" name="variant_id" value="<?= (int)$item['id'] ?>">
+            </form>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
+
+      <?php if ($cartItems !== []): ?>
+        <div class="cart-v2-totals">
+          <div class="cart-total-row"><span>Subtotal</span><span>KES <?= number_format($cartTotal, 2) ?></span></div>
+          <div class="cart-total-row"><span>Delivery</span><span>At checkout</span></div>
+          <div class="cart-total-row grand"><span>Est. total</span><span>KES <?= number_format($cartTotal, 2) ?></span></div>
+        </div>
+        <div class="cart-v2-actions">
+          <a class="cart-checkout-btn" href="#checkout" id="cartGoCheckout">
+            <i class="fa-solid fa-lock"></i> Checkout — KES <?= number_format($grandTotal, 2) ?>
+          </a>
+          <button class="cart-update-btn" type="submit" form="updateCartForm">
+            <i class="fa-solid fa-rotate"></i> Update cart
+          </button>
+        </div>
+      <?php endif; ?>
+    </aside>
+
+    <!-- ── Checkout ──────────────────────────────────────────────── -->
+    <section class="checkout-section-v2" id="checkout">
+      <div class="checkout-inner">
+        <p class="section-kicker"><i class="fa-solid fa-credit-card"></i> Checkout</p>
+        <h2 class="section-title">Complete your order.</h2>
+
+        <form method="post" action="accessories.php#checkout" class="checkout-grid-v2">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="checkout">
+
+          <div style="display:grid;gap:20px">
+
+            <!-- Customer details -->
+            <div class="checkout-card">
+              <h3><i class="fa-solid fa-user"></i> Your details</h3>
+              <div class="form-row-v2">
+                <div class="form-field-v2">
+                  <label>Full name *</label>
+                  <input class="form-input-v2" name="customer_name" placeholder="Jane Customer" required>
+                </div>
+                <div class="form-field-v2">
+                  <label>Phone number *</label>
+                  <input class="form-input-v2" name="customer_phone" placeholder="07XX XXX XXX" required>
+                </div>
+              </div>
+              <div class="form-row-v2">
+                <div class="form-field-v2">
+                  <label>Email address</label>
+                  <input class="form-input-v2" type="email" name="customer_email" placeholder="jane@example.com">
+                </div>
+                <div class="form-field-v2">
+                  <label>Delivery option</label>
+                  <select class="form-select-v2" name="delivery_option" data-delivery-option>
+                    <option value="pickup"          <?= $deliveryOption === 'pickup'          ? 'selected' : '' ?>>Pickup at Juja — Free</option>
+                    <option value="local_delivery"  <?= $deliveryOption === 'local_delivery'  ? 'selected' : '' ?>>Local delivery — KES 250</option>
+                    <option value="courier_delivery"<?= $deliveryOption === 'courier_delivery'? 'selected' : '' ?>>Courier delivery — KES 450</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row-v2 full">
+                <div class="form-field-v2">
+                  <label>Delivery address</label>
+                  <input class="form-input-v2" name="delivery_address" placeholder="Town, building, rider instructions">
+                </div>
+              </div>
+              <div class="form-row-v2 full">
+                <div class="form-field-v2">
+                  <label>Order notes</label>
+                  <input class="form-input-v2" name="notes" placeholder="Color, exact model variant, timing preference…">
+                </div>
+              </div>
+            </div>
+
+            <!-- Payment -->
+            <div class="checkout-card">
+              <h3><i class="fa-solid fa-wallet"></i> Payment method</h3>
+              <div class="payment-options-v2">
+                <label class="pay-option">
+                  <input type="radio" name="payment_method" value="mpesa_stk" checked>
+                  <div class="pay-icon"><i class="fa-solid fa-mobile-screen-button"></i></div>
+                  <div>
+                    <div class="pay-label">M-Pesa STK Push</div>
+                    <div class="pay-desc">Get a prompt on your phone to enter your PIN</div>
+                  </div>
+                  <div class="pay-check"></div>
+                </label>
+                <label class="pay-option">
+                  <input type="radio" name="payment_method" value="cash">
+                  <div class="pay-icon"><i class="fa-solid fa-money-bill-wave"></i></div>
+                  <div>
+                    <div class="pay-label">Pay on pickup</div>
+                    <div class="pay-desc">Cash or M-Pesa when you collect at Juja</div>
+                  </div>
+                  <div class="pay-check"></div>
+                </label>
+                <label class="pay-option">
+                  <input type="radio" name="payment_method" value="card">
+                  <div class="pay-icon"><i class="fa-solid fa-credit-card"></i></div>
+                  <div>
+                    <div class="pay-label">Card payment</div>
+                    <div class="pay-desc">Visa / Mastercard</div>
+                  </div>
+                  <div class="pay-check"></div>
+                </label>
+              </div>
+            </div>
           </div>
 
-          <aside class="cart-panel sticky-cart-panel <?= $tone === 'success' && str_contains($message, 'added to cart') ? 'cart-panel-updated' : '' ?>" id="cart">
-            <div class="cart-panel-head">
-              <div>
-                <p class="section-kicker"><i class="fa-solid fa-cart-shopping"></i> Cart</p>
-                <h2>Your selected accessories</h2>
-              </div>
-              <strong><?= number_format($cartQuantity) ?> item<?= $cartQuantity === 1 ? '' : 's' ?></strong>
-            </div>
+          <!-- Order summary -->
+          <div class="summary-card">
+            <h3>Order summary</h3>
             <?php if ($cartItems === []): ?>
-              <p class="muted">Your cart is empty. Add accessories from the catalog.</p>
+              <p style="color:var(--shop-muted);font-size:.9rem">Add items to your cart first.</p>
             <?php else: ?>
-              <form method="post" action="#cart" class="cart-list">
-        <?= csrf_field() ?>
-                <input type="hidden" name="action" value="update_cart">
+              <div class="summary-lines">
                 <?php foreach ($cartItems as $item): ?>
-                  <div class="cart-line compact">
-                    <img src="<?= htmlspecialchars(product_image_url($item['media_url'] ?? null)) ?>" alt="<?= htmlspecialchars((string) $item['name']) ?>">
-                    <div>
-                      <strong><?= htmlspecialchars((string) $item['name']) ?></strong>
-                      <span><?= htmlspecialchars((string) $item['variant_name']) ?> - KES <?= number_format((float) $item['retail_price'], 2) ?></span>
-                    </div>
-                    <input type="number" min="0" max="<?= (int) $item['stock_quantity'] ?>" name="cart_quantities[<?= (int) $item['id'] ?>]" value="<?= (int) $item['cart_quantity'] ?>">
-                    <strong>KES <?= number_format((float) $item['cart_line_total'], 2) ?></strong>
-                    <button class="cart-remove-btn" type="submit" form="remove-cart-<?= (int) $item['id'] ?>" aria-label="Remove <?= htmlspecialchars((string) $item['name']) ?>"><i class="fa-solid fa-trash-can"></i></button>
+                  <div class="summary-line">
+                    <span class="line-label">
+                      <?= htmlspecialchars((string)$item['name']) ?> × <?= (int)$item['cart_quantity'] ?>
+                    </span>
+                    <span class="line-val">KES <?= number_format((float)$item['cart_line_total'], 2) ?></span>
                   </div>
                 <?php endforeach; ?>
-                <div class="cart-totals">
-                  <div><span>Subtotal</span><strong>KES <?= number_format($cartTotal, 2) ?></strong></div>
-                  <div><span>Delivery</span><strong>Calculated at checkout</strong></div>
-                </div>
-                <div class="cart-actions">
-                  <button class="btn-dark" type="submit"><i class="fa-solid fa-rotate"></i> Update cart</button>
-                  <a class="btn-primary" href="#checkout"><i class="fa-solid fa-bag-shopping"></i> Checkout</a>
-                </div>
-              </form>
-              <?php foreach ($cartItems as $item): ?>
-                <form id="remove-cart-<?= (int) $item['id'] ?>" method="post" action="#cart" hidden>
-                  <input type="hidden" name="action" value="remove_cart">
-                  <input type="hidden" name="variant_id" value="<?= (int) $item['id'] ?>">
-                </form>
-              <?php endforeach; ?>
+              </div>
+              <div class="summary-divider"></div>
+              <div class="cart-total-row" style="font-size:.88rem">
+                <span>Subtotal</span><span>KES <?= number_format($cartTotal, 2) ?></span>
+              </div>
+              <div class="cart-total-row" style="font-size:.88rem;margin-top:6px">
+                <span>Delivery</span><span>KES <?= number_format($deliveryFee, 2) ?></span>
+              </div>
+              <div class="summary-divider"></div>
+              <div class="summary-grand">
+                <span>Total</span><span>KES <?= number_format($grandTotal, 2) ?></span>
+              </div>
             <?php endif; ?>
-          </aside>
+            <button class="submit-order-btn" type="submit" <?= $cartItems === [] ? 'disabled' : '' ?>>
+              <i class="fa-solid fa-lock"></i>
+              <?= $cartItems === [] ? 'Add items to continue' : 'Place order — KES ' . number_format($grandTotal, 2) ?>
+            </button>
+            <p style="text-align:center;font-size:.76rem;color:var(--shop-muted);margin:10px 0 0">
+              <i class="fa-solid fa-shield-halved"></i> Stock reserved immediately on order
+            </p>
           </div>
-
-          <section class="section" id="checkout">
-            <div class="section-inner" style="padding-left: 0; padding-right: 0;">
-              <p class="section-kicker"><i class="fa-solid fa-credit-card"></i> Checkout and payment</p>
-              <h2 class="section-title">Create an order and reserve stock immediately.</h2>
-              <form method="post" class="checkout-flow">
-        <?= csrf_field() ?>
-                <input type="hidden" name="action" value="checkout">
-                <div class="payment-card">
-                  <h3>Customer and delivery</h3>
-                  <div class="form-grid" style="margin-top: 16px;">
-                    <div><label>Name</label><input name="customer_name" placeholder="Jane Customer" required></div>
-                    <div><label>Phone</label><input name="customer_phone" placeholder="07XX XXX XXX" required></div>
-                    <div><label>Email</label><input type="email" name="customer_email" placeholder="jane@example.com"></div>
-                    <div><label>Delivery option</label><select name="delivery_option" data-delivery-option><option value="pickup" <?= $deliveryOption === 'pickup' ? 'selected' : '' ?>>Pickup at Juja shop - free</option><option value="local_delivery" <?= $deliveryOption === 'local_delivery' ? 'selected' : '' ?>>Local delivery - KES 250</option><option value="courier_delivery" <?= $deliveryOption === 'courier_delivery' ? 'selected' : '' ?>>Courier delivery - KES 450</option></select></div>
-                    <div class="full"><label>Delivery address</label><input name="delivery_address" placeholder="Town, building, rider notes"></div>
-                    <div class="full"><label>Order notes</label><input name="notes" placeholder="Color preference, exact model, or delivery note"></div>
-                  </div>
-                </div>
-
-                <div class="payment-card checkout-summary-card">
-                  <h3>Order summary</h3>
-                  <?php if ($cartItems === []): ?>
-                    <p class="muted">Add items to see your checkout summary.</p>
-                  <?php else: ?>
-                    <div class="checkout-lines">
-                      <?php foreach ($cartItems as $item): ?>
-                        <div>
-                          <span><?= htmlspecialchars((string) $item['name']) ?> x <?= (int) $item['cart_quantity'] ?></span>
-                          <strong>KES <?= number_format((float) $item['cart_line_total'], 2) ?></strong>
-                        </div>
-                      <?php endforeach; ?>
-                    </div>
-                    <div class="cart-totals order-totals">
-                      <div><span>Subtotal</span><strong>KES <?= number_format($cartTotal, 2) ?></strong></div>
-                      <div><span>Delivery</span><strong>KES <?= number_format($deliveryFee, 2) ?></strong></div>
-                      <div class="grand-total"><span>Total</span><strong>KES <?= number_format($grandTotal, 2) ?></strong></div>
-                    </div>
-                  <?php endif; ?>
-                </div>
-
-                <div class="payment-card">
-                  <h3>Payment method</h3>
-                  <label class="payment-method"><input type="radio" name="payment_method" value="mpesa_stk" data-payment-method checked> M-Pesa STK Push</label>
-                  <label class="payment-method"><input type="radio" name="payment_method" value="cash" data-payment-method> Pay on pickup</label>
-                  <label class="payment-method"><input type="radio" name="payment_method" value="card" data-payment-method> Card payment</label>
-                  <p><strong>Current flow:</strong> payment record is created as pending so admin can verify M-Pesa, cash, or card confirmation.</p>
-                  <button class="btn-primary" type="submit" style="width: 100%; margin-top: 12px;" <?= $cartItems === [] ? 'disabled' : '' ?>><i class="fa-solid fa-lock"></i> Create order</button>
-                </div>
-              </form>
-            </div>
-          </section>
-        </div>
+        </form>
       </div>
     </section>
   </main>
 
+  <!-- ── Footer ─────────────────────────────────────────────────── -->
   <footer class="footer">
     <div class="container footer-grid">
-      <div><h3>Mobimend Shop</h3><p>Accessories backed by live products, order records, and stock movement.</p></div>
-      <div><h3>Stock</h3><ul><li><?= number_format($cartCount) ?> visible units</li><li>Real checkout</li><li>Payment pending state</li></ul></div>
-      <div><h3>Support</h3><ul><li><a href="track.php">Track order</a></li><li><a href="contact.php">Contact team</a></li></ul></div>
-      <div><h3>Admin</h3><ul><li><a href="admin_products.php">Product center</a></li><li><a href="admin_inventory.php">Inventory admin</a></li></ul></div>
+      <div>
+        <h3>Mobimend Shop</h3>
+        <p>Accessories backed by live stock, real orders, and fast delivery.</p>
+      </div>
+      <div><h3>Help</h3><ul><li><a href="track.php">Track order</a></li><li><a href="contact.php">Contact us</a></li><li><a href="repair.php">Book a repair</a></li></ul></div>
+      <div><h3>More</h3><ul><li><a href="wholesale.php">Wholesale</a></li><li><a href="blog.php">Repair guides</a></li><li><a href="account.php">My account</a></li></ul></div>
+      <div><h3>Juja shop</h3><ul><li>Mum &amp; Dad Business Centre, Stall 9E</li><li>0799 183 907</li><li>mobimendspares@gmail.com</li></ul></div>
     </div>
-    <div class="container footer-bottom">&copy; 2026 Mobimend Spares.</div>
+    <div class="container footer-bottom">&copy; 2026 Mobimend Spares. All rights reserved.</div>
   </footer>
 
   <script src="chatbot.js"></script>
-  <script>
-    document.addEventListener('click', (event) => {
-      const confirmButton = event.target.closest('[data-confirm-add]');
-      const cancelButton = event.target.closest('[data-cancel-add]');
-
-      if (confirmButton) {
-        const form = confirmButton.closest('.add-cart-form');
-        if (form) {
-          form.dataset.confirmed = 'true';
-          form.requestSubmit();
-        }
-      }
-
-      if (cancelButton) {
-        const form = cancelButton.closest('.add-cart-form');
-        const panel = form?.querySelector('.add-cart-confirm');
-        if (form && panel) {
-          delete form.dataset.confirmed;
-          panel.hidden = true;
-        }
-      }
-    });
-
-    document.querySelectorAll('.add-cart-form').forEach((form) => {
-      form.addEventListener('submit', async (event) => {
-        if (form.dataset.confirmed !== 'true') {
-          event.preventDefault();
-          const panel = form.querySelector('.add-cart-confirm');
-          if (panel) {
-            panel.hidden = false;
-          }
-          return;
-        }
-
-        if (!window.fetch || !window.DOMParser) {
-          return;
-        }
-
-        event.preventDefault();
-        delete form.dataset.confirmed;
-        const button = form.querySelector('button[type="submit"]');
-        const originalText = button ? button.innerHTML : '';
-        if (button) {
-          button.disabled = true;
-          button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Adding';
-        }
-
-        try {
-          const response = await fetch(form.action, {
-            method: 'POST',
-            body: new FormData(form),
-            credentials: 'same-origin',
-          });
-          const html = await response.text();
-          const nextDocument = new DOMParser().parseFromString(html, 'text/html');
-          const nextCart = nextDocument.querySelector('#cart');
-          const currentCart = document.querySelector('#cart');
-          if (nextCart && currentCart) {
-            currentCart.replaceWith(nextCart);
-            document.querySelector('#cart')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          } else {
-            window.location.href = form.action;
-          }
-        } catch (error) {
-          form.submit();
-        } finally {
-          if (button) {
-            button.disabled = false;
-            button.innerHTML = originalText;
-          }
-        }
-      });
-    });
-  </script>
   <script src="site.js"></script>
 </body>
 </html>

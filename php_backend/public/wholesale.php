@@ -41,22 +41,40 @@ function wholesale_redirect(string $message, string $tone = 'success'): never
     exit;
 }
 
+function product_image_url(?string $mediaUrl): string
+{
+    $mediaUrl = trim((string) $mediaUrl);
+    if ($mediaUrl === '') {
+        $mediaUrl = 'assets/LOGO FINAL MOBIMEND WH BG.png';
+    }
+    if (preg_match('/^https?:\/\//i', $mediaUrl) === 1 || str_starts_with($mediaUrl, '/')) {
+        return $mediaUrl;
+    }
+
+    $version = '';
+    $localPath = __DIR__ . '/' . ltrim($mediaUrl, '/');
+    if (is_file($localPath)) {
+        $version = '?v=' . filemtime($localPath);
+    }
+
+    return rtrim((string) env('APP_URL', ''), '/') . '/' . ltrim($mediaUrl, '/') . $version;
+}
+
 $hasCatalogChannel = wholesale_product_column_exists($pdo, 'catalog_channel');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
     $action = (string) ($_POST['action'] ?? 'checkout');
 
     if ($action === 'add_cart') {
         $itemId = (int) ($_POST['item_id'] ?? 0);
         $quantity = max(1, (int) ($_POST['quantity'] ?? 1));
-        $channelFilter = $hasCatalogChannel ? ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)' : '';
+        $channelFilter = $hasCatalogChannel ? ' AND p.catalog_channel IN ("wholesale", "both")' : '';
         $stmt = $pdo->prepare(
             'SELECT ii.*, p.minimum_wholesale_quantity
              FROM inventory_items ii
-             LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
-             LEFT JOIN products p ON p.id = pv.product_id
-             WHERE ii.id = :id AND ii.quantity > 0' . $channelFilter . '
+             INNER JOIN product_variants pv ON pv.id = ii.product_variant_id
+             INNER JOIN products p ON p.id = pv.product_id
+             WHERE ii.id = :id AND ii.quantity > 0 AND pv.is_active = 1 AND p.status IN ("active", "out_of_stock")' . $channelFilter . '
              LIMIT 1'
         );
         $stmt->execute(['id' => $itemId]);
@@ -129,13 +147,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lines = [];
 
             foreach ($selectedItems as $itemId => $quantity) {
-                $channelFilter = $hasCatalogChannel ? ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)' : '';
+                $channelFilter = $hasCatalogChannel ? ' AND p.catalog_channel IN ("wholesale", "both")' : '';
                 $stmt = $pdo->prepare(
                     'SELECT ii.*, pv.product_id, pv.sku, pv.stock_quantity, p.name AS product_name, p.minimum_wholesale_quantity
                      FROM inventory_items ii
-                     LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
-                     LEFT JOIN products p ON p.id = pv.product_id
-                     WHERE ii.id = :id' . $channelFilter . '
+                     INNER JOIN product_variants pv ON pv.id = ii.product_variant_id
+                     INNER JOIN products p ON p.id = pv.product_id
+                     WHERE ii.id = :id AND pv.is_active = 1 AND p.status IN ("active", "out_of_stock")' . $channelFilter . '
                      FOR UPDATE'
                 );
                 $stmt->execute(['id' => $itemId]);
@@ -298,20 +316,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$brandChannelJoin = 'LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id LEFT JOIN products p ON p.id = pv.product_id';
-$brandChannelWhere = $hasCatalogChannel ? ' WHERE p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL' : '';
+$brandChannelJoin = 'INNER JOIN product_variants pv ON pv.id = ii.product_variant_id INNER JOIN products p ON p.id = pv.product_id';
+$brandChannelWhere = $hasCatalogChannel ? ' WHERE pv.is_active = 1 AND p.status IN ("active", "out_of_stock") AND p.catalog_channel IN ("wholesale", "both")' : ' WHERE pv.is_active = 1 AND p.status IN ("active", "out_of_stock")';
 $brandsStmt = $pdo->query('SELECT DISTINCT ii.brand FROM inventory_items ii ' . $brandChannelJoin . $brandChannelWhere . ' ORDER BY ii.brand ASC');
 $brands = array_map(static fn (array $row): string => (string) $row['brand'], $brandsStmt->fetchAll());
 
 $catalogChannelSelect = $hasCatalogChannel ? 'p.catalog_channel' : '"wholesale" AS catalog_channel';
 $sql = 'SELECT ii.*, p.minimum_wholesale_quantity, p.media_url, p.name AS product_name, ' . $catalogChannelSelect . ', pv.sku
         FROM inventory_items ii
-        LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
-        LEFT JOIN products p ON p.id = pv.product_id
-        WHERE ii.quantity > 0';
+        INNER JOIN product_variants pv ON pv.id = ii.product_variant_id
+        INNER JOIN products p ON p.id = pv.product_id
+        WHERE ii.quantity > 0 AND pv.is_active = 1 AND p.status IN ("active", "out_of_stock")';
 $params = [];
 if ($hasCatalogChannel) {
-    $sql .= ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)';
+    $sql .= ' AND p.catalog_channel IN ("wholesale", "both")';
 }
 if ($selectedBrand !== '') {
     $sql .= ' AND ii.brand = :brand';
@@ -326,18 +344,19 @@ $totalUnits = array_reduce($items, static fn (int $sum, array $item): int => $su
 $activeBrands = count(array_unique(array_map(static fn (array $item): string => (string) $item['brand'], $items)));
 $wholesaleCart = is_array($_SESSION['wholesale_cart'] ?? null) ? $_SESSION['wholesale_cart'] : [];
 $cartItems = [];
+$cartQuantity = 0;
 $cartTotal = 0.0;
 if ($wholesaleCart !== []) {
     $ids = array_values(array_filter(array_map('intval', array_keys($wholesaleCart)), static fn (int $id): bool => $id > 0));
     if ($ids !== []) {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $channelFilter = $hasCatalogChannel ? ' AND (p.catalog_channel IN ("wholesale", "both") OR p.id IS NULL)' : '';
+        $channelFilter = $hasCatalogChannel ? ' AND p.catalog_channel IN ("wholesale", "both")' : '';
         $stmt = $pdo->prepare(
             'SELECT ii.*, p.minimum_wholesale_quantity, p.media_url, p.name AS product_name, pv.sku
              FROM inventory_items ii
-             LEFT JOIN product_variants pv ON pv.id = ii.product_variant_id
-             LEFT JOIN products p ON p.id = pv.product_id
-             WHERE ii.id IN (' . $placeholders . ') AND ii.quantity > 0' . $channelFilter
+             INNER JOIN product_variants pv ON pv.id = ii.product_variant_id
+             INNER JOIN products p ON p.id = pv.product_id
+             WHERE ii.id IN (' . $placeholders . ') AND ii.quantity > 0 AND pv.is_active = 1 AND p.status IN ("active", "out_of_stock")' . $channelFilter
         );
         $stmt->execute($ids);
         foreach ($stmt->fetchAll() as $row) {
@@ -350,6 +369,7 @@ if ($wholesaleCart !== []) {
             $row['cart_quantity'] = $quantity;
             $row['cart_unit_price'] = $unitPrice;
             $row['cart_line_total'] = $unitPrice * $quantity;
+            $cartQuantity += $quantity;
             $cartTotal += (float) $row['cart_line_total'];
             $cartItems[] = $row;
         }
@@ -362,17 +382,23 @@ if ($wholesaleCart !== []) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wholesale Parts | Mobimend Spares</title>
+  <meta name="description" content="Wholesale phone spare parts — screens, batteries, charging ports and more. MOQ-aware ordering with live inventory for repair shops and resellers.">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="shop_overhaul.css">
 </head>
 <body>
+
+  <!-- ── Nav ──────────────────────────────────────────────────── -->
   <nav class="site-nav">
     <a class="nav-left" href="index.php">
       <img src="assets/LOGO FINAL MOBIMEND WH BG.png" alt="Mobimend Spares" class="logo">
       <div class="brand"><h1>MOBIMEND</h1><p class="tagline">Wholesale desk</p></div>
     </a>
-    <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
+    <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-label="Toggle navigation">
+      <i class="fa-solid fa-bars"></i>
+    </button>
     <ul class="nav-links" id="nav-links">
       <li><a href="index.php">Home</a></li>
       <li><a href="repair.php">Repair</a></li>
@@ -381,150 +407,416 @@ if ($wholesaleCart !== []) {
       <li><a href="blog.php">Blog</a></li>
       <li><a href="track.php">Track</a></li>
       <li><a href="account.php">Account</a></li>
+      <li>
+        <button class="nav-cart-btn" id="cartDrawerToggle" type="button" aria-label="View bulk cart">
+          <i class="fa-solid fa-cart-flatbed"></i>
+          Bulk cart
+          <span class="nav-cart-badge" id="navCartBadge"
+                data-count="<?= $cartQuantity ?>"><?= $cartQuantity > 0 ? $cartQuantity : '' ?></span>
+        </button>
+      </li>
     </ul>
   </nav>
 
-  <header class="wholesale-hero">
-    <div class="section-inner">
-      <p class="section-kicker"><i class="fa-solid fa-boxes-stacked"></i> Live wholesale inventory</p>
-      <h1 class="section-title">MOQ-aware ordering for repair shops and resellers.</h1>
-      <p class="section-copy">Filter by brand, select quantities, and submit a stock-backed checkout that deducts inventory and records transactions.</p>
-      <div class="trust-strip">
-        <div class="trust-item"><strong><?= number_format($totalUnits) ?></strong><span>visible units</span></div>
-        <div class="trust-item"><strong><?= number_format($activeBrands) ?></strong><span>active brands</span></div>
-        <div class="trust-item"><strong>MOQ 5+</strong><span>recommended bulk tier</span></div>
-        <div class="trust-item"><strong>Live</strong><span>MySQL inventory</span></div>
+  <!-- ── Hero ──────────────────────────────────────────────────── -->
+  <header class="wholesale-hero-v2">
+    <div class="wholesale-hero-inner">
+      <p class="section-kicker" style="color:rgba(255,255,255,.9)">
+        <i class="fa-solid fa-network-wired"></i> Product-linked wholesale desk
+      </p>
+      <h1 class="section-title" style="color:#fff">
+        Bulk parts supply with a builder's heartbeat.
+      </h1>
+      <p class="section-copy">
+        Source admin-approved parts with live stock, MOQ-aware quantities, and checkout that records inventory movement the moment an order is placed.
+      </p>
+      <div class="wholesale-stats">
+        <div class="wholesale-stat">
+          <strong><?= number_format($totalUnits) ?></strong>
+          <span>units in stock</span>
+        </div>
+        <div class="wholesale-stat">
+          <strong><?= number_format($activeBrands) ?></strong>
+          <span>active brands</span>
+        </div>
+        <div class="wholesale-stat">
+          <strong>MOQ-led</strong>
+          <span>bulk tier</span>
+        </div>
+        <div class="wholesale-stat">
+          <strong>Live</strong>
+          <span>real-time stock</span>
+        </div>
       </div>
     </div>
   </header>
 
-  <main class="section alt" id="live-catalog">
-    <div class="section-inner">
-      <?php if ($message !== ''): ?>
-        <div class="php-banner <?= htmlspecialchars($tone) ?>"><?= htmlspecialchars($message) ?></div>
-      <?php endif; ?>
+  <!-- ── Alert ─────────────────────────────────────────────────── -->
+  <?php if ($message !== ''): ?>
+    <div class="alert-banner <?= htmlspecialchars($tone) ?>" id="live-catalog">
+      <i class="fa-solid <?= $tone === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?>"></i>
+      <?= htmlspecialchars($message) ?>
+    </div>
+  <?php endif; ?>
 
-      <div class="wholesale-layout">
-        <aside class="wholesale-card wholesale-filter">
-          <h3>Buyer controls</h3>
-          <p>Separate pricing tiers and quantity guidance for business customers.</p>
-          <div class="category-pills">
-            <a class="pill <?= $selectedBrand === '' ? 'active' : '' ?>" href="wholesale.php#live-catalog">All brands</a>
+  <!-- ── Main layout ───────────────────────────────────────────── -->
+  <main id="live-catalog">
+    <div class="cart-drawer-overlay" id="cartDrawerOverlay"></div>
+
+    <div class="wholesale-layout-v2">
+
+      <!-- ── Sidebar ─────────────────────────────────────────────── -->
+      <aside class="wholesale-sidebar">
+
+        <!-- Brand filter -->
+        <div class="sidebar-section">
+          <h4>Filter by brand</h4>
+          <div class="brand-pill-list">
+            <a class="brand-pill <?= $selectedBrand === '' ? 'active' : '' ?>"
+               href="wholesale.php#live-catalog">
+              All brands
+            </a>
             <?php foreach ($brands as $brand): ?>
-              <a class="pill <?= $selectedBrand === $brand ? 'active' : '' ?>" href="wholesale.php?brand=<?= urlencode($brand) ?>#live-catalog"><?= htmlspecialchars($brand) ?></a>
+              <a class="brand-pill <?= $selectedBrand === $brand ? 'active' : '' ?>"
+                 href="wholesale.php?brand=<?= urlencode($brand) ?>#live-catalog">
+                <?= htmlspecialchars($brand) ?>
+                <span class="brand-count">
+                  <?= count(array_filter($items, fn($i) => $i['brand'] === $brand)) ?>
+                </span>
+              </a>
             <?php endforeach; ?>
           </div>
-          <div class="payment-method" style="margin-top: 18px;">
-            <strong>Pricing tiers</strong>
-            <span>1-4 units: retail</span>
-            <span>5-19 units: reseller</span>
-            <span>20+ units: distributor</span>
-          </div>
-          <a class="btn-ghost" href="contact.php" style="margin-top: 14px;">Request special pricing</a>
-          <section class="cart-panel wholesale-cart-panel visible-cart-panel" id="cart">
-            <div class="cart-panel-head">
-              <div>
-                <p class="section-kicker"><i class="fa-solid fa-cart-flatbed"></i> Bulk cart</p>
-                <h2>Selected parts</h2>
-              </div>
-              <strong>KES <?= number_format($cartTotal, 2) ?></strong>
+        </div>
+
+        <!-- Pricing tiers -->
+        <div class="sidebar-section">
+          <h4>Pricing tiers</h4>
+          <div class="tier-grid">
+            <div class="tier-row">
+              <span class="tier-label">1 – 4 units</span>
+              <span class="tier-badge retail">Retail</span>
             </div>
-            <?php if ($cartItems === []): ?>
-              <p class="muted">Your wholesale cart is empty. Add MOQ quantities from the catalog.</p>
-            <?php else: ?>
-              <form method="post" action="#cart" class="cart-list">
-        <?= csrf_field() ?>
-                <input type="hidden" name="action" value="update_cart">
-                <?php foreach ($cartItems as $cartItem): ?>
-                  <?php $moq = max(1, (int) ($cartItem['minimum_wholesale_quantity'] ?? 5)); ?>
-                  <div class="cart-line no-image">
-                    <div>
-                      <strong><?= htmlspecialchars((string) $cartItem['brand']) ?> <?= htmlspecialchars((string) $cartItem['model']) ?> <?= htmlspecialchars((string) $cartItem['part_type']) ?></strong>
-                      <span>MOQ <?= $moq ?> - KES <?= number_format((float) $cartItem['cart_unit_price'], 2) ?></span>
-                    </div>
-                    <input type="number" min="0" max="<?= (int) $cartItem['quantity'] ?>" name="cart_quantities[<?= (int) $cartItem['id'] ?>]" value="<?= (int) $cartItem['cart_quantity'] ?>">
-                    <strong>KES <?= number_format((float) $cartItem['cart_line_total'], 2) ?></strong>
-                  </div>
-                <?php endforeach; ?>
-                <button class="btn-dark" type="submit">Update wholesale cart</button>
-              </form>
-            <?php endif; ?>
-          </section>
-        </aside>
+            <div class="tier-row">
+              <span class="tier-label">5 – 19 units</span>
+              <span class="tier-badge reseller">Reseller</span>
+            </div>
+            <div class="tier-row">
+              <span class="tier-label">20+ units</span>
+              <span class="tier-badge distrib">Distributor</span>
+            </div>
+          </div>
+          <a class="btn-ghost" href="contact.php"
+             style="margin-top:14px;display:inline-flex;align-items:center;gap:7px;font-size:.84rem">
+            <i class="fa-solid fa-envelope"></i> Request special pricing
+          </a>
+        </div>
 
-        <section class="wholesale-card">
-          <h2>Wholesale catalog</h2>
-          <p>Select quantities. MOQ warnings can later become enforced pricing logic.</p>
-          <div>
-            <table class="wholesale-table">
-              <thead>
-                <tr>
-                  <th>Part</th>
-                  <th>Brand / model</th>
-                  <th>Available</th>
-                  <th>Unit price</th>
-                  <th>MOQ</th>
-                  <th>Add</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php if ($items === []): ?>
-                  <tr><td colspan="6">No stock available for this filter yet. Add inventory from admin.</td></tr>
+        <!-- Bulk cart -->
+      </aside>
+
+      <!-- ── Catalog ─────────────────────────────────────────────── -->
+      <section aria-label="Wholesale catalog">
+        <div class="w-catalog-head">
+          <h2>
+            <?= $selectedBrand !== '' ? htmlspecialchars($selectedBrand) . ' parts' : 'All spare parts' ?>
+            <span style="font-size:.85rem;font-weight:400;color:var(--shop-muted);margin-left:8px">
+              <?= count($items) ?> available
+            </span>
+          </h2>
+        </div>
+
+        <div class="w-catalog-grid">
+          <?php if ($items === []): ?>
+            <div class="w-empty">
+              <i class="fa-solid fa-box-open" style="font-size:2rem;color:var(--shop-line);display:block;margin-bottom:12px"></i>
+              <p>No stock for this filter yet. <a href="wholesale.php">Clear filter</a></p>
+            </div>
+          <?php endif; ?>
+
+          <?php foreach ($items as $item):
+            $unitPrice = (float)$item['wholesale_price'] > 0
+              ? (float)$item['wholesale_price']
+              : (float)$item['sell_price'];
+            $moq = max(1, (int)($item['minimum_wholesale_quantity'] ?? 5));
+            $imgUrl = $item['media_url'] ?? null;
+            $partIcons = [
+              'LCD'        => 'fa-display',
+              'Screen'     => 'fa-display',
+              'Battery'    => 'fa-battery-three-quarters',
+              'Charging'   => 'fa-plug',
+              'Speaker'    => 'fa-volume-high',
+              'Earpiece'   => 'fa-headphones',
+              'Camera'     => 'fa-camera',
+              'Back Cover' => 'fa-mobile-screen',
+              'Chassis'    => 'fa-mobile-screen',
+            ];
+            $iconKey  = 'fa-microchip';
+            foreach ($partIcons as $k => $v) {
+              if (stripos((string)$item['part_type'], $k) !== false) { $iconKey = $v; break; }
+            }
+          ?>
+            <article class="w-part-card">
+              <div class="w-part-img">
+                <?php if ($imgUrl): ?>
+                  <img src="<?= htmlspecialchars(product_image_url($imgUrl)) ?>"
+                       alt="<?= htmlspecialchars((string)$item['part_type']) ?>"
+                       loading="lazy">
+                <?php else: ?>
+                  <i class="fa-solid <?= $iconKey ?> part-icon"></i>
                 <?php endif; ?>
-                <?php foreach ($items as $item): ?>
-                  <tr>
-                    <td>
-                      <strong><?= htmlspecialchars((string) $item['part_type']) ?></strong><br><span class="status-pill">Quality checked</span>
-                    </td>
-                    <td><?= htmlspecialchars((string) $item['brand']) ?><br><small><?= htmlspecialchars((string) $item['model']) ?></small></td>
-                    <td><?= (int) $item['quantity'] ?></td>
-                    <td>KES <?= number_format((float) ($item['wholesale_price'] > 0 ? $item['wholesale_price'] : $item['sell_price']), 2) ?></td>
-                    <td><span class="status-pill"><?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>+</span></td>
-                    <td>
-                      <form method="post" action="#cart" class="wholesale-add-form">
-        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="add_cart">
-                        <input type="hidden" name="item_id" value="<?= (int) $item['id'] ?>">
-                        <input type="number" min="<?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>" max="<?= (int) $item['quantity'] ?>" name="quantity" value="<?= max(1, (int) ($item['minimum_wholesale_quantity'] ?? 5)) ?>">
-                        <button class="btn-dark" type="submit">Add</button>
-                      </form>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
+                <?php if ((int)$item['quantity'] <= 10): ?>
+                  <span class="stock-badge low-stock" style="position:absolute;top:8px;left:8px">
+                    Low stock
+                  </span>
+                <?php endif; ?>
+              </div>
+              <div class="w-part-body">
+                <div class="w-part-brand"><?= htmlspecialchars((string)$item['brand']) ?></div>
+                <div class="w-part-name"><?= htmlspecialchars((string)($item['product_name'] ?: $item['part_type'])) ?></div>
+                <div class="w-part-model"><?= htmlspecialchars((string)$item['model']) ?></div>
+                <?php if (trim((string)($item['sku'] ?? '')) !== ''): ?>
+                  <div class="w-part-sku">SKU <?= htmlspecialchars((string)$item['sku']) ?></div>
+                <?php endif; ?>
+                <div class="w-part-meta">
+                  <span class="w-part-price">KES <?= number_format($unitPrice, 2) ?></span>
+                  <span class="w-part-stock"><?= number_format((int)$item['quantity']) ?> units</span>
+                </div>
+                <div class="moq-tag">
+                  <i class="fa-solid fa-layer-group" style="font-size:.7rem"></i>
+                  Min. order: <?= $moq ?> units
+                </div>
+                <form method="post" action="wholesale.php#cart" class="w-add-form">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="action"  value="add_cart">
+                  <input type="hidden" name="item_id" value="<?= (int)$item['id'] ?>">
+                  <input class="w-qty-input"
+                         type="number"
+                         min="<?= $moq ?>"
+                         max="<?= (int)$item['quantity'] ?>"
+                         name="quantity"
+                         value="<?= $moq ?>">
+                  <button class="w-add-btn" type="submit">
+                    <i class="fa-solid fa-plus"></i> Add
+                  </button>
+                </form>
+              </div>
+            </article>
+          <?php endforeach; ?>
+        </div>
+      </section>
 
-            <form method="post" action="#live-catalog" class="checkout-flow">
-        <?= csrf_field() ?>
-              <input type="hidden" name="action" value="checkout">
-              <div class="payment-card">
-                <h3>Buyer details</h3>
-                <div class="form-grid" style="margin-top: 16px;">
-                  <div><label>Contact name</label><input name="buyer_name" placeholder="Jane Buyer" required></div>
-                  <div><label>Phone</label><input name="buyer_phone" placeholder="07XX XXX XXX" required></div>
-                  <div><label>Email</label><input type="email" name="buyer_email" placeholder="buyer@example.com"></div>
-                  <div><label>Business</label><input name="business_name" placeholder="Repair shop or reseller"></div>
-                  <div class="full"><label>Delivery / pickup notes</label><input name="delivery_address" placeholder="Pickup, rider dispatch, or courier address"></div>
+    </div><!-- end wholesale-layout-v2 -->
+
+    <!-- ── Sticky bulk cart bar ─────────────────────────────────── -->
+    <aside class="cart-v2" id="cartDrawer" aria-label="Wholesale cart" aria-hidden="true">
+      <div class="cart-v2-head">
+        <h2 class="cart-v2-title">
+          <i class="fa-solid fa-cart-flatbed"></i>
+          Bulk cart
+        </h2>
+        <div class="cart-v2-head-right">
+          <span class="cart-v2-count" id="cartCountBadge"><?= $cartQuantity ?></span>
+          <button class="cart-close-btn" id="cartDrawerClose" aria-label="Close cart">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="cart-v2-body">
+        <?php if ($cartItems === []): ?>
+          <div class="cart-v2-empty">
+            <i class="fa-solid fa-box-open"></i>
+            <p>Your bulk cart is empty.<br>Add MOQ quantities from the catalog.</p>
+          </div>
+        <?php else: ?>
+          <form method="post" action="wholesale.php" id="updateWholesaleCartForm">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="update_cart">
+            <?php foreach ($cartItems as $item): ?>
+              <?php $itemName = trim((string)($item['product_name'] ?: $item['brand'] . ' ' . $item['model'] . ' ' . $item['part_type'])); ?>
+              <div class="cart-line-v2 wholesale-cart-line">
+                <img src="<?= htmlspecialchars(product_image_url($item['media_url'] ?? null)) ?>"
+                     alt="<?= htmlspecialchars($itemName) ?>"
+                     onerror="this.style.background='#eaf7fb'">
+                <div>
+                  <div class="line-name"><?= htmlspecialchars($itemName) ?></div>
+                  <div class="line-price">
+                    KES <?= number_format((float)$item['cart_unit_price'], 2) ?> each
+                    <span class="line-moq">MOQ <?= max(1, (int)($item['minimum_wholesale_quantity'] ?? 5)) ?></span>
+                  </div>
+                </div>
+                <input class="cart-qty-input"
+                       type="number"
+                       min="0"
+                       max="<?= (int)$item['quantity'] ?>"
+                       name="cart_quantities[<?= (int)$item['id'] ?>]"
+                       value="<?= (int)$item['cart_quantity'] ?>">
+                <button class="cart-remove"
+                        type="submit"
+                        form="remove-wholesale-<?= (int)$item['id'] ?>"
+                        aria-label="Remove <?= htmlspecialchars($itemName) ?>">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            <?php endforeach; ?>
+          </form>
+
+          <?php foreach ($cartItems as $item): ?>
+            <form id="remove-wholesale-<?= (int)$item['id'] ?>" method="post" action="wholesale.php" hidden>
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="remove_cart">
+              <input type="hidden" name="item_id" value="<?= (int)$item['id'] ?>">
+            </form>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
+
+      <?php if ($cartItems !== []): ?>
+        <div class="cart-v2-totals">
+          <div class="cart-total-row"><span>Lines</span><span><?= count($cartItems) ?></span></div>
+          <div class="cart-total-row"><span>Units</span><span><?= number_format($cartQuantity) ?></span></div>
+          <div class="cart-total-row grand"><span>Total</span><span>KES <?= number_format($cartTotal, 2) ?></span></div>
+        </div>
+        <div class="cart-v2-actions">
+          <a class="cart-checkout-btn" href="#wholesale-checkout" id="cartGoCheckout">
+            <i class="fa-solid fa-lock"></i> Checkout - KES <?= number_format($cartTotal, 2) ?>
+          </a>
+          <button class="cart-update-btn" type="submit" form="updateWholesaleCartForm">
+            <i class="fa-solid fa-rotate"></i> Update cart
+          </button>
+        </div>
+      <?php endif; ?>
+    </aside>
+
+    <!-- ── Wholesale checkout ──────────────────────────────────── -->
+    <section class="w-checkout-section" id="wholesale-checkout">
+      <div class="w-checkout-inner">
+        <p class="section-kicker"><i class="fa-solid fa-file-invoice"></i> Bulk checkout</p>
+        <h2 class="section-title">Submit your wholesale order.</h2>
+
+        <form method="post" action="wholesale.php#wholesale-checkout" class="w-checkout-grid">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="checkout">
+
+          <div style="display:grid;gap:20px">
+
+            <!-- Buyer details -->
+            <div class="checkout-card">
+              <h3><i class="fa-solid fa-building"></i> Buyer details</h3>
+              <div class="form-row-v2">
+                <div class="form-field-v2">
+                  <label>Contact name *</label>
+                  <input class="form-input-v2" name="buyer_name" placeholder="Jane Buyer" required>
+                </div>
+                <div class="form-field-v2">
+                  <label>Phone number *</label>
+                  <input class="form-input-v2" name="buyer_phone" placeholder="07XX XXX XXX" required>
                 </div>
               </div>
-              <div class="payment-card">
-                <h3>Wholesale checkout notes</h3>
-                <p>Orders deduct inventory immediately, create a wholesale order, and insert inventory transaction records for profit tracking.</p>
+              <div class="form-row-v2">
+                <div class="form-field-v2">
+                  <label>Email address</label>
+                  <input class="form-input-v2" type="email" name="buyer_email" placeholder="buyer@business.com">
+                </div>
+                <div class="form-field-v2">
+                  <label>Business name</label>
+                  <input class="form-input-v2" name="business_name" placeholder="Repair shop or reseller name">
+                </div>
               </div>
-              <div class="payment-card">
-                <h3>Payment readiness</h3>
-                <label class="payment-method"><input type="radio" name="payment_method" value="mpesa_stk" checked> M-Pesa STK</label>
-                <label class="payment-method"><input type="radio" name="payment_method" value="bank_transfer"> Bank transfer</label>
-                <label class="payment-method"><input type="radio" name="payment_method" value="cash"> Cash on pickup</label>
-                <p>M-Pesa, bank transfer, and cash payments are saved as pending records for admin reconciliation.</p>
-                <button class="btn-primary" type="submit" style="width: 100%; margin-top: 12px;" <?= $cartItems === [] ? 'disabled' : '' ?>>Submit wholesale checkout</button>
+              <div class="form-row-v2 full">
+                <div class="form-field-v2">
+                  <label>Delivery / pickup notes</label>
+                  <input class="form-input-v2" name="delivery_address"
+                         placeholder="Pickup at Juja, rider dispatch address, or courier instructions">
+                </div>
               </div>
-            </form>
+            </div>
+
+            <!-- Payment -->
+            <div class="checkout-card">
+              <h3><i class="fa-solid fa-wallet"></i> Payment method</h3>
+              <div class="payment-options-v2">
+                <label class="pay-option">
+                  <input type="radio" name="payment_method" value="mpesa_stk" checked>
+                  <div class="pay-icon"><i class="fa-solid fa-mobile-screen-button"></i></div>
+                  <div>
+                    <div class="pay-label">M-Pesa STK Push</div>
+                    <div class="pay-desc">Get a prompt on your phone to enter PIN</div>
+                  </div>
+                  <div class="pay-check"></div>
+                </label>
+                <label class="pay-option">
+                  <input type="radio" name="payment_method" value="bank_transfer">
+                  <div class="pay-icon"><i class="fa-solid fa-building-columns"></i></div>
+                  <div>
+                    <div class="pay-label">Bank transfer</div>
+                    <div class="pay-desc">EFT or RTGS — details shared after order</div>
+                  </div>
+                  <div class="pay-check"></div>
+                </label>
+                <label class="pay-option">
+                  <input type="radio" name="payment_method" value="cash">
+                  <div class="pay-icon"><i class="fa-solid fa-money-bill-wave"></i></div>
+                  <div>
+                    <div class="pay-label">Cash on pickup</div>
+                    <div class="pay-desc">Pay at Juja shop on collection</div>
+                  </div>
+                  <div class="pay-check"></div>
+                </label>
+              </div>
+            </div>
           </div>
-        </section>
+
+          <!-- Order summary -->
+          <div class="summary-card">
+            <h3>Bulk order summary</h3>
+            <?php if ($cartItems === []): ?>
+              <p style="color:var(--shop-muted);font-size:.88rem">Add parts from the catalog to continue.</p>
+            <?php else: ?>
+              <div class="summary-lines">
+                <?php foreach ($cartItems as $ci): ?>
+                  <div class="summary-line">
+                    <span class="line-label">
+                      <?= htmlspecialchars((string)$ci['brand']) ?>
+                      <?= htmlspecialchars((string)$ci['part_type']) ?>
+                      × <?= (int)$ci['cart_quantity'] ?>
+                    </span>
+                    <span class="line-val">KES <?= number_format((float)$ci['cart_line_total'], 2) ?></span>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+              <div class="summary-divider"></div>
+              <div class="summary-grand">
+                <span>Total</span>
+                <span>KES <?= number_format($cartTotal, 2) ?></span>
+              </div>
+            <?php endif; ?>
+            <p style="font-size:.78rem;color:var(--shop-muted);margin:0 0 16px">
+              Stock is deducted immediately on order. Payments are saved as pending for admin reconciliation.
+            </p>
+            <button class="submit-order-btn" type="submit" <?= $cartItems === [] ? 'disabled' : '' ?>>
+              <i class="fa-solid fa-lock"></i>
+              <?= $cartItems === [] ? 'Build your cart first' : 'Submit wholesale order' ?>
+            </button>
+          </div>
+        </form>
       </div>
-    </div>
+    </section>
   </main>
+
+  <!-- ── Footer ──────────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div>
+        <h3>Mobimend Wholesale</h3>
+        <p>MOQ-aware spare parts supply for repair shops and resellers across Kenya.</p>
+      </div>
+      <div><h3>Catalog</h3><ul><li><a href="wholesale.php">All parts</a></li><li><a href="accessories.php">Retail shop</a></li><li><a href="repair.php">Book repair</a></li></ul></div>
+      <div><h3>Support</h3><ul><li><a href="track.php">Track order</a></li><li><a href="contact.php">Contact team</a></li><li><a href="blog.php">Repair guides</a></li></ul></div>
+      <div><h3>Juja</h3><ul><li>Mum &amp; Dad Business Centre, Stall 9E</li><li>0799 183 907</li><li>mobimendspares@gmail.com</li></ul></div>
+    </div>
+    <div class="container footer-bottom">&copy; 2026 Mobimend Spares. All rights reserved.</div>
+  </footer>
 
   <script src="chatbot.js"></script>
   <script src="site.js"></script>
