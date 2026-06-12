@@ -6,7 +6,7 @@ define('CONSUMER_KEY', getenv('DARAJA_CONSUMER_KEY') ?: 'RvUcgubNNYFtY5spszNNWAQ
 define('CONSUMER_SECRET', getenv('DARAJA_CONSUMER_SECRET') ?: 'VlWyiowGpFGWh6t6yMW12CZ1AKHS8POgNVEgz0tmAzW7PIStybtXrA62hVeDYIg9');
 define('SHORTCODE', '174379'); // sandbox shortcode
 define('PASSKEY', 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'); // sandbox passkey
-define('CALLBACK_URL', 'https://yourdomain.com/php_backend/callback.php');
+define('CALLBACK_URL', 'https://unworthy-fastball-hypnotist.ngrok-free.dev/php_backend/callback.php');
 define('BASE_URL', DARAJA_ENV === 'sandbox'
     ? 'https://sandbox.safaricom.co.ke'
     : 'https://api.safaricom.co.ke');

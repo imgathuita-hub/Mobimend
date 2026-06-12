@@ -14,6 +14,7 @@ $pdo = Database::connection();
 $message = (string) ($_GET['message'] ?? '');
 $tone = (string) ($_GET['tone'] ?? 'info');
 $selectedBrand = trim((string) ($_GET['brand'] ?? ''));
+$createdOrder = null;
 $_SESSION['wholesale_cart'] ??= [];
 
 function wholesale_product_column_exists(PDO $pdo, string $column): bool
@@ -301,10 +302,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            $paymentId = (int) $pdo->lastInsertId();
 
             $pdo->commit();
             $_SESSION['wholesale_cart'] = [];
-            $message = 'Wholesale order ' . $orderNumber . ' created for ' . $updatedCount . ' units. Total value: KES ' . number_format($totalRevenue, 2) . '.';
+            $createdOrder = [
+                'number' => $orderNumber,
+                'total' => $totalRevenue,
+                'payment_id' => $paymentId,
+                'payment_method' => $paymentMethod,
+                'phone' => $buyerPhone,
+                'units' => $updatedCount,
+            ];
+            $message = $paymentMethod === 'mpesa_stk'
+                ? 'Wholesale order ' . $orderNumber . ' created. Sending M-Pesa prompt now.'
+                : 'Wholesale order ' . $orderNumber . ' created for ' . $updatedCount . ' units. Total value: KES ' . number_format($totalRevenue, 2) . '.';
             $tone = 'success';
         } catch (Throwable $exception) {
             if ($pdo->inTransaction()) {
@@ -456,7 +468,22 @@ if ($wholesaleCart !== []) {
     <div class="alert-banner <?= htmlspecialchars($tone) ?>" id="live-catalog">
       <i class="fa-solid <?= $tone === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check' ?>"></i>
       <?= htmlspecialchars($message) ?>
+      <?php if ($createdOrder && ($createdOrder['payment_method'] ?? '') === 'mpesa_stk'): ?>
+        <span data-mpesa-status style="margin-left:10px">Preparing M-Pesa prompt...</span>
+      <?php endif; ?>
     </div>
+  <?php endif; ?>
+
+  <?php if ($createdOrder && ($createdOrder['payment_method'] ?? '') === 'mpesa_stk'): ?>
+    <div
+      data-mpesa-checkout
+      data-auto-start="1"
+      data-phone="<?= htmlspecialchars((string) $createdOrder['phone'], ENT_QUOTES, 'UTF-8') ?>"
+      data-amount="<?= htmlspecialchars((string) $createdOrder['total'], ENT_QUOTES, 'UTF-8') ?>"
+      data-reference="<?= htmlspecialchars((string) $createdOrder['number'], ENT_QUOTES, 'UTF-8') ?>"
+      data-payment-id="<?= (int) $createdOrder['payment_id'] ?>"
+      data-success-url="track.php"
+      hidden></div>
   <?php endif; ?>
 
   <!-- ── Main layout ───────────────────────────────────────────── -->
@@ -794,7 +821,7 @@ if ($wholesaleCart !== []) {
             <p style="font-size:.78rem;color:var(--shop-muted);margin:0 0 16px">
               Stock is deducted immediately on order. Payments are saved as pending for admin reconciliation.
             </p>
-            <button class="submit-order-btn" type="submit" <?= $cartItems === [] ? 'disabled' : '' ?>>
+            <button class="submit-order-btn" type="submit" id="pay-btn" data-mpesa-trigger <?= $cartItems === [] ? 'disabled' : '' ?>>
               <i class="fa-solid fa-lock"></i>
               <?= $cartItems === [] ? 'Build your cart first' : 'Submit wholesale order' ?>
             </button>
@@ -820,5 +847,6 @@ if ($wholesaleCart !== []) {
 
   <script src="chatbot.js"></script>
   <script src="site.js"></script>
+  <script src="mpesa_checkout.js"></script>
 </body>
 </html>

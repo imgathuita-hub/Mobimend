@@ -355,11 +355,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $paymentId = (int) $pdo->lastInsertId();
 
         $pdo->commit();
         $_SESSION['shop_cart'] = [];
-        $createdOrder = ['number' => $orderNumber, 'total' => $grandTotal];
-        $message = 'Order ' . $orderNumber . ' created. Payment is pending verification.';
+        $createdOrder = [
+            'number' => $orderNumber,
+            'total' => $grandTotal,
+            'payment_id' => $paymentId,
+            'payment_method' => $paymentMethod,
+            'phone' => $customerPhone,
+        ];
+        $message = $paymentMethod === 'mpesa_stk'
+            ? 'Order ' . $orderNumber . ' created. Sending M-Pesa prompt now.'
+            : 'Order ' . $orderNumber . ' created. Payment is pending verification.';
         $tone = 'success';
     } catch (Throwable $exception) {
         if ($pdo->inTransaction()) {
@@ -523,8 +532,22 @@ $grandTotal = $cartTotal + $deliveryFee;
     <div class="alert-banner success" style="margin-top:12px">
       <strong>Order <?= htmlspecialchars($createdOrder['number']) ?> confirmed!</strong>
       KES <?= number_format((float)$createdOrder['total'], 2) ?> — stock reserved.
+      <?php if (($createdOrder['payment_method'] ?? '') === 'mpesa_stk'): ?>
+        <span data-mpesa-status style="margin-left:10px">Preparing M-Pesa prompt...</span>
+      <?php endif; ?>
       <a href="track.php" style="margin-left:10px;text-decoration:underline">Track it →</a>
     </div>
+    <?php if (($createdOrder['payment_method'] ?? '') === 'mpesa_stk'): ?>
+      <div
+        data-mpesa-checkout
+        data-auto-start="1"
+        data-phone="<?= htmlspecialchars((string) $createdOrder['phone'], ENT_QUOTES, 'UTF-8') ?>"
+        data-amount="<?= htmlspecialchars((string) $createdOrder['total'], ENT_QUOTES, 'UTF-8') ?>"
+        data-reference="<?= htmlspecialchars((string) $createdOrder['number'], ENT_QUOTES, 'UTF-8') ?>"
+        data-payment-id="<?= (int) $createdOrder['payment_id'] ?>"
+        data-success-url="track.php"
+        hidden></div>
+    <?php endif; ?>
   <?php endif; ?>
 
   <!-- ── Search & filter toolbar ───────────────────────────────── -->
@@ -867,7 +890,7 @@ $grandTotal = $cartTotal + $deliveryFee;
                 <span>Total</span><span>KES <?= number_format($grandTotal, 2) ?></span>
               </div>
             <?php endif; ?>
-            <button class="submit-order-btn" type="submit" <?= $cartItems === [] ? 'disabled' : '' ?>>
+            <button class="submit-order-btn" type="submit" id="pay-btn" data-mpesa-trigger <?= $cartItems === [] ? 'disabled' : '' ?>>
               <i class="fa-solid fa-lock"></i>
               <?= $cartItems === [] ? 'Add items to continue' : 'Place order — KES ' . number_format($grandTotal, 2) ?>
             </button>
@@ -896,5 +919,6 @@ $grandTotal = $cartTotal + $deliveryFee;
 
   <script src="chatbot.js"></script>
   <script src="site.js"></script>
+  <script src="mpesa_checkout.js"></script>
 </body>
 </html>
