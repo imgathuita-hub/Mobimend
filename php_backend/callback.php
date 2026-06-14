@@ -2,101 +2,110 @@
 
 declare(strict_types=1);
 
-header('Content-Type: application/json');
-
 require __DIR__ . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
+use Mobimend\Services\MpesaCallbackProcessor;
+use Mobimend\Services\PaymentAuditLogger;
+use Mobimend\Services\PaymentCallbackQueue;
+
+header('Content-Type: application/json; charset=utf-8');
 
 $raw = file_get_contents('php://input') ?: '';
-$data = json_decode($raw, true);
-
-file_put_contents(dirname(__DIR__) . '/storage/daraja_log.txt', date('c') . "\n" . $raw . "\n\n", FILE_APPEND);
-
-$result = is_array($data) ? ($data['Body']['stkCallback'] ?? null) : null;
-if (!is_array($result)) {
-    http_response_code(200);
-    echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Ignored']);
-    exit;
-}
-
-$checkoutId = (string) ($result['CheckoutRequestID'] ?? '');
-$merchantRequestId = (string) ($result['MerchantRequestID'] ?? '');
-$resultCode = (int) ($result['ResultCode'] ?? -1);
-$resultDesc = (string) ($result['ResultDesc'] ?? '');
-$metadataItems = $result['CallbackMetadata']['Item'] ?? [];
-$metadata = [];
-
-if (is_array($metadataItems)) {
-    foreach ($metadataItems as $item) {
-        if (isset($item['Name'])) {
-            $metadata[(string) $item['Name']] = $item['Value'] ?? null;
-        }
-    }
-}
-
-$pdo = Database::connection();
-$pdo->beginTransaction();
+$pdo = null;
+$decoded = null;
 
 try {
-    $stmt = $pdo->prepare(
-        'SELECT * FROM payments
-         WHERE checkout_request_id = :checkout_request_id
-            OR (merchant_request_id IS NOT NULL AND merchant_request_id = :merchant_request_id)
-         ORDER BY id DESC
-         LIMIT 1
-         FOR UPDATE'
-    );
-    $stmt->execute([
-        'checkout_request_id' => $checkoutId,
-        'merchant_request_id' => $merchantRequestId,
-    ]);
-    $payment = $stmt->fetch();
+    $pdo = Database::connection();
+    verify_callback_signature($raw);
 
-    if ($payment) {
-        $status = $resultCode === 0 ? 'paid' : 'failed';
-        $stmt = $pdo->prepare(
-            'UPDATE payments
-             SET status = :status,
-                 mpesa_receipt_number = :mpesa_receipt_number,
-                 phone_number = COALESCE(NULLIF(:phone_number, ""), phone_number),
-                 raw_response = :raw_response,
-                 verified_at = :verified_at,
-                 updated_at = :updated_at
-             WHERE id = :id'
-        );
-        $stmt->execute([
-            'status' => $status,
-            'mpesa_receipt_number' => $metadata['MpesaReceiptNumber'] ?? null,
-            'phone_number' => isset($metadata['PhoneNumber']) ? (string) $metadata['PhoneNumber'] : '',
-            'raw_response' => json_encode($data),
-            'verified_at' => $resultCode === 0 ? now() : null,
-            'updated_at' => now(),
-            'id' => (int) $payment['id'],
+    $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($decoded)) {
+        throw new InvalidArgumentException('Callback payload must be a JSON object.');
+    }
+
+    $callback = MpesaCallbackProcessor::validatePayload($decoded);
+    $checkoutRequestId = (string) $callback['CheckoutRequestID'];
+
+    PaymentAuditLogger::record($pdo, null, 'mpesa.callback.received', 'received', $decoded, null, $checkoutRequestId);
+
+    retry_operation(static function () use ($pdo, $decoded): void {
+        MpesaCallbackProcessor::process($pdo, $decoded);
+    }, max(1, (int) env('MPESA_CALLBACK_RETRY_ATTEMPTS', '3')));
+
+    http_response_code(200);
+    echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Callback processed successfully']);
+} catch (JsonException|InvalidArgumentException $exception) {
+    if ($pdo instanceof \PDO) {
+        PaymentCallbackQueue::enqueue($pdo, $raw, is_array($decoded) ? $decoded : null, 'invalid_callback', $exception->getMessage());
+        PaymentAuditLogger::record($pdo, null, 'mpesa.callback.rejected', 'invalid', is_array($decoded) ? $decoded : null, [
+            'error' => $exception->getMessage(),
         ]);
+    } else {
+        PaymentCallbackQueue::enqueueWithoutDatabase($raw, is_array($decoded) ? $decoded : null, 'invalid_callback', $exception->getMessage());
+    }
 
-        if ($resultCode === 0 && !empty($payment['order_id'])) {
-            $stmt = $pdo->prepare('UPDATE orders SET payment_status = "paid", updated_at = :updated_at WHERE id = :id');
-            $stmt->execute([
-                'updated_at' => now(),
-                'id' => (int) $payment['order_id'],
-            ]);
-        } elseif ($resultCode !== 0 && !empty($payment['order_id'])) {
-            $stmt = $pdo->prepare('UPDATE orders SET payment_status = "failed", updated_at = :updated_at WHERE id = :id AND payment_status = "unpaid"');
-            $stmt->execute([
-                'updated_at' => now(),
-                'id' => (int) $payment['order_id'],
-            ]);
+    http_response_code(400);
+    echo json_encode(['ResultCode' => 1, 'ResultDesc' => 'Invalid callback payload']);
+} catch (Throwable $exception) {
+    if ($pdo instanceof \PDO) {
+        PaymentCallbackQueue::enqueue($pdo, $raw, is_array($decoded) ? $decoded : null, 'processing_failed', $exception->getMessage());
+        PaymentAuditLogger::record($pdo, null, 'mpesa.callback.queued', 'queued', is_array($decoded) ? $decoded : null, [
+            'error' => $exception->getMessage(),
+        ]);
+    } else {
+        PaymentCallbackQueue::enqueueWithoutDatabase($raw, is_array($decoded) ? $decoded : null, 'processing_failed', $exception->getMessage());
+    }
+
+    error_log('Callback processing queued: ' . $exception->getMessage());
+    http_response_code(200);
+    echo json_encode(['ResultCode' => 0, 'ResultDesc' => 'Callback queued for retry']);
+}
+
+function verify_callback_signature(string $rawPayload): void
+{
+    $secret = trim((string) env('MPESA_CALLBACK_SIGNATURE_SECRET', ''));
+    if ($secret === '') {
+        return;
+    }
+
+    $provided = callback_header('X-Mobimend-Signature')
+        ?: callback_header('X-Hub-Signature-256')
+        ?: callback_header('X-Mpesa-Signature');
+
+    if ($provided === '') {
+        throw new InvalidArgumentException('Missing callback signature.');
+    }
+
+    $provided = str_starts_with($provided, 'sha256=') ? substr($provided, 7) : $provided;
+    $expected = hash_hmac('sha256', $rawPayload, $secret);
+
+    if (!hash_equals($expected, $provided)) {
+        throw new InvalidArgumentException('Invalid callback signature.');
+    }
+}
+
+function callback_header(string $name): string
+{
+    $serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+    return trim((string) ($_SERVER[$serverKey] ?? ''));
+}
+
+function retry_operation(callable $operation, int $maxAttempts): void
+{
+    $last = null;
+
+    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        try {
+            $operation();
+            return;
+        } catch (Throwable $exception) {
+            $last = $exception;
+            if ($attempt < $maxAttempts) {
+                usleep(min(250000 * $attempt, 1000000));
+            }
         }
     }
 
-    $pdo->commit();
-} catch (Throwable $exception) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
-    file_put_contents(dirname(__DIR__) . '/storage/daraja_log.txt', date('c') . "\nCallback DB error: " . $exception->getMessage() . "\n\n", FILE_APPEND);
+    throw $last ?? new RuntimeException('Retry operation failed.');
 }
-
-http_response_code(200);
-echo json_encode(['ResultCode' => 0, 'ResultDesc' => $resultDesc ?: 'Accepted']);

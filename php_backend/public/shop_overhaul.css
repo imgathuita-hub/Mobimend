@@ -1217,7 +1217,7 @@
 .shop-hero {
   position: relative;
   overflow: hidden;
-  padding: clamp(54px, 7vw, 92px) 0 clamp(38px, 5vw, 62px);
+  padding: clamp(34px, 5vw, 58px) 0 clamp(24px, 4vw, 40px);
   background:
     linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255,255,255,0.04) 1px, transparent 1px),
@@ -1235,17 +1235,17 @@
 .shop-hero-inner {
   position: relative;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 390px);
-  gap: clamp(24px, 5vw, 64px);
+  gap: clamp(20px, 4vw, 48px);
 }
 .shop-hero .section-kicker {
   color: #b8f23b;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 .shop-hero-title {
   color: #fff;
-  max-width: 720px;
-  font-size: clamp(2rem, 5vw, 4.6rem);
-  line-height: 0.98;
+  max-width: 660px;
+  font-size: clamp(1.9rem, 4.2vw, 3.4rem);
+  line-height: 1;
   letter-spacing: 0;
 }
 .shop-hero-sub {
@@ -1257,13 +1257,15 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 22px;
+  margin-top: 18px;
 }
 .shop-hero-actions + .shop-hero-sub {
   display: none;
 }
 .shop-hero-primary,
-.shop-hero-secondary {
+.shop-hero-secondary,
+.wholesale-hero-primary,
+.wholesale-hero-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1275,11 +1277,13 @@
   font-weight: 900;
   font-size: 0.92rem;
 }
-.shop-hero-primary {
+.shop-hero-primary,
+.wholesale-hero-primary {
   background: #b8f23b;
   color: #08111d;
 }
-.shop-hero-secondary {
+.shop-hero-secondary,
+.wholesale-hero-secondary {
   border: 1px solid rgba(255,255,255,0.24);
   color: #fff;
   background: rgba(255,255,255,0.06);
@@ -1292,8 +1296,8 @@
   overflow: hidden;
 }
 .lab-screen {
-  min-height: 170px;
-  padding: 28px;
+  min-height: 132px;
+  padding: 22px;
   display: grid;
   align-content: end;
   background:
@@ -1303,17 +1307,17 @@
   background-size: 28px 28px;
 }
 .lab-dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #b8f23b;
-  box-shadow: 0 0 0 6px rgba(184,242,59,0.12);
-  margin-bottom: 18px;
+  box-shadow: 0 0 0 5px rgba(184,242,59,0.12);
+  margin-bottom: 14px;
 }
 .lab-screen strong {
   display: block;
   color: #fff;
-  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-size: clamp(2rem, 4vw, 3.1rem);
   line-height: 0.9;
 }
 .lab-screen small {
@@ -1329,7 +1333,7 @@
   gap: 0;
 }
 .shop-hero-lab .shop-trust-item {
-  padding: 14px;
+  padding: 11px 12px;
   border-top: 1px solid rgba(255,255,255,0.12);
   color: rgba(255,255,255,0.78);
 }
@@ -1379,6 +1383,7 @@
 .wholesale-hero-v2 {
   position: relative;
   overflow: hidden;
+  padding: clamp(36px, 5vw, 62px) 0;
   background:
     linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255,255,255,0.04) 1px, transparent 1px),
@@ -1392,11 +1397,31 @@
   height: 4px;
   background: linear-gradient(90deg, #b8f23b, var(--shop-accent), var(--shop-orange));
 }
+.wholesale-hero-v2 .section-title {
+  max-width: 650px;
+}
+.wholesale-hero-v2 .section-copy {
+  max-width: 680px;
+}
+.wholesale-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.wholesale-stats {
+  gap: 14px;
+  margin-top: 22px;
+}
 .wholesale-stat {
   border-radius: 8px;
+  min-width: 104px;
+  padding: 11px 16px;
 }
 .wholesale-stat strong {
   color: #b8f23b;
+  font-size: 1.28rem;
 }
 .wholesale-sidebar,
 .w-part-card,
@@ -1431,13 +1456,29 @@
 }
 
 @media (max-width: 640px) {
+  .shop-hero,
+  .wholesale-hero-v2 {
+    padding: 30px 0 28px;
+  }
+  .shop-hero-title {
+    font-size: clamp(1.85rem, 10vw, 2.45rem);
+  }
+  .shop-hero-lab {
+    display: none;
+  }
+  .wholesale-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 18px;
+  }
   .shop-hero-lab .shop-trust {
     grid-template-columns: 1fr;
   }
   .shop-hero-lab .shop-trust-item:nth-child(odd) {
     border-right: 0;
   }
-  .shop-hero-actions a {
+  .shop-hero-actions a,
+  .wholesale-hero-actions a {
     width: 100%;
   }
 }

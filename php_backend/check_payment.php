@@ -2,66 +2,84 @@
 
 declare(strict_types=1);
 
-header('Content-Type: application/json');
-header('Cache-Control: no-store, max-age=0');
-
 require __DIR__ . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
 
-function payment_status_response(array $payload, int $status = 200): never
-{
-    http_response_code($status);
-    echo json_encode($payload);
+header('Content-Type: application/json; charset=utf-8');
+
+$checkoutRequestId = trim((string) ($_GET['checkout_id'] ?? $_GET['id'] ?? ''));
+$paymentId = (int) ($_GET['payment_id'] ?? 0);
+
+if ($checkoutRequestId === '' && $paymentId <= 0) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Missing payment identifier']);
     exit;
-}
-
-$checkoutRequestId = trim((string) ($_GET['id'] ?? ''));
-
-if ($checkoutRequestId === '' || strlen($checkoutRequestId) > 140 || !preg_match('/^[A-Za-z0-9_-]+$/', $checkoutRequestId)) {
-    payment_status_response([
-        'paid' => false,
-        'status' => 'invalid',
-        'message' => 'Valid CheckoutRequestID is required.',
-    ], 400);
 }
 
 try {
     $pdo = Database::connection();
-    $stmt = $pdo->prepare(
-        'SELECT p.id, p.status, p.amount, p.currency, p.mpesa_receipt_number, p.updated_at,
-                o.order_number, o.payment_status AS order_payment_status
-         FROM payments p
-         LEFT JOIN orders o ON o.id = p.order_id
-         WHERE p.checkout_request_id = :checkout_request_id
-         ORDER BY p.id DESC
-         LIMIT 1'
-    );
-    $stmt->execute(['checkout_request_id' => $checkoutRequestId]);
-    $payment = $stmt->fetch();
 
+    if ($checkoutRequestId !== '') {
+        $stmt = $pdo->prepare(
+            'SELECT p.id, p.status, p.amount, p.currency, p.phone_number, p.checkout_request_id,
+                    p.mpesa_receipt_number, p.created_at, p.updated_at, o.order_number
+             FROM payments p
+             LEFT JOIN orders o ON o.id = p.order_id
+             WHERE p.checkout_request_id = :checkout_request_id
+             LIMIT 1'
+        );
+        $stmt->execute(['checkout_request_id' => $checkoutRequestId]);
+    } else {
+        $stmt = $pdo->prepare(
+            'SELECT p.id, p.status, p.amount, p.currency, p.phone_number, p.checkout_request_id,
+                    p.mpesa_receipt_number, p.created_at, p.updated_at, o.order_number
+             FROM payments p
+             LEFT JOIN orders o ON o.id = p.order_id
+             WHERE p.id = :id
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $paymentId]);
+    }
+
+    $payment = $stmt->fetch();
     if (!$payment) {
-        payment_status_response([
+        echo json_encode([
             'paid' => false,
             'status' => 'pending',
-            'message' => 'Payment confirmation is still pending.',
+            'message' => 'Payment is pending confirmation.',
         ]);
+        exit;
     }
 
     $status = (string) $payment['status'];
-    payment_status_response([
+    echo json_encode([
         'paid' => $status === 'paid',
         'status' => $status,
+        'message' => payment_status_message($status),
+        'payment_id' => (int) $payment['id'],
+        'checkout_request_id' => $payment['checkout_request_id'],
         'receipt' => $payment['mpesa_receipt_number'],
         'order_number' => $payment['order_number'],
         'amount' => (float) $payment['amount'],
         'currency' => $payment['currency'],
+        'phone' => $payment['phone_number'],
+        'created_at' => $payment['created_at'],
         'updated_at' => $payment['updated_at'],
     ]);
 } catch (Throwable $exception) {
-    payment_status_response([
-        'paid' => false,
-        'status' => 'error',
-        'message' => $exception->getMessage(),
-    ], 500);
+    error_log('Check Payment Error: ' . $exception->getMessage());
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Internal server error']);
+}
+
+function payment_status_message(string $status): string
+{
+    return match ($status) {
+        'paid' => 'Payment confirmed.',
+        'failed' => 'Payment failed or was cancelled.',
+        'cancelled' => 'Payment was cancelled.',
+        'processing' => 'Payment prompt sent. Waiting for confirmation.',
+        default => 'Payment is pending confirmation.',
+    };
 }

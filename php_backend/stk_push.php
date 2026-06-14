@@ -2,148 +2,115 @@
 
 declare(strict_types=1);
 
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-
 require __DIR__ . '/src/bootstrap.php';
-require_once __DIR__ . '/daraja_config.php';
-require_once __DIR__ . '/get_token.php';
 
 use Mobimend\Config\Database;
+use Mobimend\Services\DarajaStkPush;
+use Mobimend\Services\PaymentAuditLogger;
 
-function mpesa_json_response(array $payload, int $status = 200): never
-{
-    http_response_code($status);
-    echo json_encode($payload);
+header('Content-Type: application/json; charset=utf-8');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['errorMessage' => 'Method not allowed']);
     exit;
 }
 
-function normalize_mpesa_phone(string $phone): string
-{
-    $phone = preg_replace('/\D+/', '', $phone) ?? '';
-    if (str_starts_with($phone, '0')) {
-        return '254' . substr($phone, 1);
-    }
-    if (str_starts_with($phone, '7') || str_starts_with($phone, '1')) {
-        return '254' . $phone;
-    }
-
-    return $phone;
+$raw = file_get_contents('php://input') ?: '';
+$payload = json_decode($raw, true);
+if (!is_array($payload)) {
+    $payload = $_POST;
 }
 
+$phone = trim((string) ($payload['phone'] ?? ''));
+$amount = (float) ($payload['amount'] ?? 0);
+$reference = trim((string) ($payload['reference'] ?? 'Mobimend'));
+$paymentId = (int) ($payload['payment_id'] ?? 0);
+
+if ($phone === '' || $amount < 1) {
+    http_response_code(422);
+    echo json_encode(['errorMessage' => 'Valid phone and amount are required.']);
+    exit;
+}
+
+$pdo = Database::connection();
+
 try {
-    $input = json_decode(file_get_contents('php://input') ?: '{}', true);
-    if (!is_array($input)) {
-        mpesa_json_response(['errorMessage' => 'Invalid request body.'], 400);
-    }
-
-    $phone = normalize_mpesa_phone((string) ($input['phone'] ?? ''));
-    $amount = (int) ceil((float) ($input['amount'] ?? 0));
-    $ref = trim((string) ($input['reference'] ?? 'MobimendOrder'));
-    $paymentId = (int) ($input['payment_id'] ?? 0);
-
-    if (!preg_match('/^254(7|1)\d{8}$/', $phone)) {
-        mpesa_json_response(['errorMessage' => 'Enter a valid Kenyan M-Pesa phone number.'], 422);
-    }
-    if ($amount <= 0) {
-        mpesa_json_response(['errorMessage' => 'Payment amount must be greater than zero.'], 422);
-    }
-
-    $pdo = Database::connection();
-    $payment = null;
-
     if ($paymentId > 0) {
-        $stmt = $pdo->prepare('SELECT p.*, o.order_number FROM payments p LEFT JOIN orders o ON o.id = p.order_id WHERE p.id = :id LIMIT 1');
+        $stmt = $pdo->prepare('SELECT p.*, o.order_number FROM payments p LEFT JOIN orders o ON o.id = p.order_id WHERE p.id = :id');
         $stmt->execute(['id' => $paymentId]);
         $payment = $stmt->fetch();
-    }
 
-    if (!$payment && $ref !== '') {
+        if (!$payment) {
+            throw new RuntimeException('Payment record was not found.');
+        }
+
+        $amount = (float) $payment['amount'];
+        $phone = (string) $payment['phone_number'];
+        $reference = (string) ($payment['order_number'] ?: $reference);
+    } else {
         $stmt = $pdo->prepare(
-            'SELECT p.*, o.order_number
-             FROM payments p
-             INNER JOIN orders o ON o.id = p.order_id
-             WHERE o.order_number = :reference
-             ORDER BY p.id DESC
-             LIMIT 1'
-        );
-        $stmt->execute(['reference' => $ref]);
-        $payment = $stmt->fetch();
-    }
-
-    if ($payment) {
-        $paymentId = (int) $payment['id'];
-        $amount = (int) ceil((float) $payment['amount']);
-        $phone = normalize_mpesa_phone((string) ($payment['phone_number'] ?: $phone));
-        $ref = trim((string) ($payment['order_number'] ?: $ref));
-    }
-
-    $token = getDarajaToken();
-    if (!$token) {
-        mpesa_json_response(['errorMessage' => 'Unable to get Daraja access token.'], 502);
-    }
-
-    $timestamp = date('YmdHis');
-    $password = base64_encode(SHORTCODE . PASSKEY . $timestamp);
-
-    $payload = [
-        'BusinessShortCode' => SHORTCODE,
-        'Password' => $password,
-        'Timestamp' => $timestamp,
-        'TransactionType' => 'CustomerPayBillOnline',
-        'Amount' => $amount,
-        'PartyA' => $phone,
-        'PartyB' => SHORTCODE,
-        'PhoneNumber' => $phone,
-        'CallBackURL' => CALLBACK_URL,
-        'AccountReference' => $ref !== '' ? $ref : 'MobimendOrder',
-        'TransactionDesc' => 'Payment for ' . ($ref !== '' ? $ref : 'MobimendOrder'),
-    ];
-
-    $ch = curl_init(BASE_URL . '/mpesa/stkpush/v1/processrequest');
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $token,
-        'Content-Type: application/json',
-    ]);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = curl_exec($ch);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-
-    if ($response === false || $response === '') {
-        mpesa_json_response(['errorMessage' => $curlError ?: 'Daraja request failed.'], 502);
-    }
-
-    $data = json_decode($response, true);
-    if (!is_array($data)) {
-        mpesa_json_response(['errorMessage' => 'Daraja returned an invalid response.'], 502);
-    }
-
-    if ($paymentId > 0) {
-        $status = (string) ($data['ResponseCode'] ?? '') === '0' ? 'processing' : 'failed';
-        $stmt = $pdo->prepare(
-            'UPDATE payments
-             SET status = :status,
-                 merchant_request_id = :merchant_request_id,
-                 checkout_request_id = :checkout_request_id,
-                 raw_response = :raw_response,
-                 updated_at = :updated_at
-             WHERE id = :id'
+            'INSERT INTO payments
+             (payment_method, amount, currency, status, phone_number, created_at, updated_at)
+             VALUES
+             ("mpesa_stk", :amount, "KES", "pending", :phone_number, :created_at, :updated_at)'
         );
         $stmt->execute([
-            'status' => $status,
-            'merchant_request_id' => $data['MerchantRequestID'] ?? null,
-            'checkout_request_id' => $data['CheckoutRequestID'] ?? null,
-            'raw_response' => json_encode($data),
+            'amount' => $amount,
+            'phone_number' => $phone,
+            'created_at' => now(),
             'updated_at' => now(),
-            'id' => $paymentId,
         ]);
-        $data['payment_id'] = $paymentId;
+        $paymentId = (int) $pdo->lastInsertId();
     }
 
-    echo json_encode($data);
+    PaymentAuditLogger::record($pdo, $paymentId, 'mpesa.stk.requested', 'pending', [
+        'phone' => $phone,
+        'amount' => $amount,
+        'reference' => $reference,
+    ]);
+
+    $response = DarajaStkPush::initiate($amount, $phone, $reference, 'Mobimend payment');
+    $checkoutRequestId = isset($response['CheckoutRequestID']) ? (string) $response['CheckoutRequestID'] : null;
+    $merchantRequestId = isset($response['MerchantRequestID']) ? (string) $response['MerchantRequestID'] : null;
+    $responseCode = (string) ($response['ResponseCode'] ?? '');
+    $status = $responseCode === '0' ? 'processing' : 'failed';
+
+    $update = $pdo->prepare(
+        'UPDATE payments
+         SET status = :status,
+             merchant_request_id = :merchant_request_id,
+             checkout_request_id = :checkout_request_id,
+             raw_response = :raw_response,
+             updated_at = :updated_at
+         WHERE id = :id'
+    );
+    $update->execute([
+        'status' => $status,
+        'merchant_request_id' => $merchantRequestId,
+        'checkout_request_id' => $checkoutRequestId,
+        'raw_response' => json_encode($response, JSON_THROW_ON_ERROR),
+        'updated_at' => now(),
+        'id' => $paymentId,
+    ]);
+
+    PaymentAuditLogger::record($pdo, $paymentId, 'mpesa.stk.response', $status, $response, null, $checkoutRequestId);
+
+    echo json_encode($response + [
+        'status' => $status,
+        'payment_id' => $paymentId,
+    ]);
 } catch (Throwable $exception) {
-    mpesa_json_response(['errorMessage' => $exception->getMessage()], 500);
+    if ($paymentId > 0) {
+        PaymentAuditLogger::record($pdo, $paymentId, 'mpesa.stk.failed', 'failed', null, [
+            'error' => $exception->getMessage(),
+        ]);
+
+        $stmt = $pdo->prepare('UPDATE payments SET status = "failed", updated_at = :updated_at WHERE id = :id');
+        $stmt->execute(['updated_at' => now(), 'id' => $paymentId]);
+    }
+
+    error_log('STK Push Error: ' . $exception->getMessage());
+    http_response_code(500);
+    echo json_encode(['errorMessage' => 'Payment initiation failed. Please retry.']);
 }

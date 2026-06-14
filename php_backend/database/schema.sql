@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(160) NOT NULL UNIQUE,
   phone VARCHAR(40) NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('customer', 'wholesale_customer', 'technician', 'admin', 'super_admin') NOT NULL DEFAULT 'customer',
+  role ENUM('customer', 'wholesale_customer', 'technician', 'finance', 'admin', 'super_admin') NOT NULL DEFAULT 'customer',
   account_status ENUM('pending', 'active', 'suspended') NOT NULL DEFAULT 'active',
   email_verified_at TIMESTAMP NULL,
   last_login_at TIMESTAMP NULL,
@@ -337,6 +337,39 @@ CREATE TABLE IF NOT EXISTS payments (
   INDEX idx_payments_status (status),
   INDEX idx_payments_checkout_request (checkout_request_id),
   INDEX idx_payments_receipt (mpesa_receipt_number)
+);
+
+CREATE TABLE IF NOT EXISTS payment_audit_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  payment_id BIGINT UNSIGNED NULL,
+  checkout_request_id VARCHAR(120) NULL,
+  event_type VARCHAR(80) NOT NULL,
+  status VARCHAR(40) NOT NULL,
+  payload JSON NULL,
+  context JSON NULL,
+  ip_address VARCHAR(45) NULL,
+  user_agent VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_payment_audit_logs_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE SET NULL,
+  INDEX idx_payment_audit_logs_payment (payment_id),
+  INDEX idx_payment_audit_logs_checkout (checkout_request_id),
+  INDEX idx_payment_audit_logs_event_time (event_type, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS payment_callback_queue (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  checkout_request_id VARCHAR(120) NULL,
+  raw_payload LONGTEXT NOT NULL,
+  payload JSON NULL,
+  status ENUM('pending', 'processing', 'completed', 'failed') NOT NULL DEFAULT 'pending',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at TIMESTAMP NULL,
+  last_error TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_payment_callback_queue_status_available (status, available_at),
+  INDEX idx_payment_callback_queue_checkout (checkout_request_id)
 );
 
 CREATE TABLE IF NOT EXISTS wholesale_applications (

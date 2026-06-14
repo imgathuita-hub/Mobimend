@@ -442,6 +442,14 @@ if ($wholesaleCart !== []) {
       <p class="section-copy">
         Source admin-approved parts with live stock, MOQ-aware quantities, and checkout that records inventory movement the moment an order is placed.
       </p>
+      <div class="wholesale-hero-actions">
+        <a class="wholesale-hero-primary" href="#live-catalog">
+          <i class="fa-solid fa-boxes-stacked"></i> Browse wholesale stock
+        </a>
+        <a class="wholesale-hero-secondary" href="accessories.php">
+          <i class="fa-solid fa-store"></i> Retail shop
+        </a>
+      </div>
       <div class="wholesale-stats">
         <div class="wholesale-stat">
           <strong><?= number_format($totalUnits) ?></strong>

@@ -24,7 +24,7 @@ final class DarajaStkPush
 
         if ($callbackUrl === '') {
             $appUrl = rtrim((string) env('APP_URL', ''), '/');
-            $callbackUrl = $appUrl !== '' ? $appUrl . '/mpesa_callback.php' : '';
+            $callbackUrl = $appUrl !== '' ? $appUrl . '/callback.php' : '';
         }
 
         if ($callbackUrl === '') {
@@ -74,10 +74,7 @@ final class DarajaStkPush
             CURLOPT_TIMEOUT => 30,
         ]);
 
-        $body = curl_exec($curl);
-        $error = curl_error($curl);
-        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
-        curl_close($curl);
+        [$body, $error, $status] = self::curlWithRetry($curl);
 
         if ($body === false || $error !== '') {
             throw new RuntimeException('Could not connect to Daraja OAuth: ' . $error);
@@ -107,10 +104,7 @@ final class DarajaStkPush
             CURLOPT_TIMEOUT => 30,
         ]);
 
-        $body = curl_exec($curl);
-        $error = curl_error($curl);
-        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
-        curl_close($curl);
+        [$body, $error, $status] = self::curlWithRetry($curl);
 
         if ($body === false || $error !== '') {
             throw new RuntimeException('Could not connect to Daraja STK endpoint: ' . $error);
@@ -146,5 +140,36 @@ final class DarajaStkPush
         }
 
         throw new RuntimeException('Enter a valid Kenyan M-Pesa phone number.');
+    }
+
+    /** @return array{0:string|false,1:string,2:int} */
+    private static function curlWithRetry(\CurlHandle $curl): array
+    {
+        $maxAttempts = max(1, (int) env('MPESA_RETRY_ATTEMPTS', '3'));
+        $lastBody = false;
+        $lastError = '';
+        $lastStatus = 0;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $body = curl_exec($curl);
+            $error = curl_error($curl);
+            $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+
+            $lastBody = $body;
+            $lastError = $error;
+            $lastStatus = $status;
+
+            if ($body !== false && $error === '' && ($status < 500 || $attempt === $maxAttempts)) {
+                curl_close($curl);
+                return [$body, $error, $status];
+            }
+
+            if ($attempt < $maxAttempts) {
+                usleep(min(500000 * $attempt, 1500000));
+            }
+        }
+
+        curl_close($curl);
+        return [$lastBody, $lastError, $lastStatus];
     }
 }

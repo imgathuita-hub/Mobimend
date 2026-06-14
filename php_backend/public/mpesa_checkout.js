@@ -19,7 +19,7 @@ async function initiateMpesaPayment(phone, amount, reference, paymentId) {
 
     if (data.ResponseCode === '0') {
       if (btn) btn.textContent = 'Check your phone and enter PIN';
-      if (status) status.textContent = 'Prompt sent. Check your phone and enter your M-Pesa PIN.';
+      if (status) status.textContent = 'Payment pending. Check your phone and enter your M-Pesa PIN.';
       pollPaymentStatus(data.CheckoutRequestID);
     } else {
       if (btn) {
@@ -69,7 +69,7 @@ async function pollPaymentStatus(checkoutRequestId) {
           btn.textContent = 'Retry M-Pesa payment';
         }
       } else if (status) {
-        status.textContent = 'Waiting for M-Pesa confirmation...';
+        status.textContent = data.message || 'Payment pending. Waiting for M-Pesa confirmation...';
       }
     } catch (err) {
       if (status) status.textContent = 'Still checking payment confirmation...';
