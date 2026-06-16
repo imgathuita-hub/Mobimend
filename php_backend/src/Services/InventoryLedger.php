@@ -76,7 +76,7 @@ final class InventoryLedger
             'brand' => (string) ($movement['brand'] ?? ''),
             'model' => (string) ($movement['model'] ?? ''),
             'part_type' => (string) ($movement['part_type'] ?? ''),
-            'quantity' => $quantityDelta,
+            'quantity' => $quantity,
             'unit_buy_price' => $unitBuyPrice,
             'unit_sell_price' => $unitSellPrice,
             'total_cost' => (float) ($movement['total_cost'] ?? ($unitBuyPrice * $quantity)),

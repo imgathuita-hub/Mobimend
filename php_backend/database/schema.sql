@@ -426,6 +426,8 @@ CREATE TABLE IF NOT EXISTS blog_posts (
   slug VARCHAR(200) NOT NULL UNIQUE,
   excerpt TEXT NULL,
   body LONGTEXT NOT NULL,
+  seo_title VARCHAR(180) NULL,
+  seo_description VARCHAR(255) NULL,
   featured_image_path VARCHAR(255) NULL,
   status ENUM('draft', 'published', 'archived') NOT NULL DEFAULT 'draft',
   published_at TIMESTAMP NULL,

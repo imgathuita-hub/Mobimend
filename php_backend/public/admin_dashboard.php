@@ -8,6 +8,7 @@ session_start();
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use Mobimend\Config\Database;
+use Mobimend\Services\AnalyticsClient;
 
 $pdo = Database::connection();
 $adminRoles = ['admin', 'super_admin', 'technician', 'finance'];
@@ -142,13 +143,6 @@ function scalar_value(PDO $pdo, string $sql, array $params = []): mixed
     return $stmt->fetchColumn();
 }
 
-function rows(PDO $pdo, string $sql, array $params = []): array
-{
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    return $stmt->fetchAll();
-}
-
 function percent_value(int|float $part, int|float $whole): float
 {
     if ((float) $whole <= 0.0) {
@@ -156,6 +150,163 @@ function percent_value(int|float $part, int|float $whole): float
     }
 
     return round(((float) $part / (float) $whole) * 100, 1);
+}
+
+function default_kpis(): array
+{
+    return [
+        'today_revenue' => 0.0,
+        'month_revenue' => 0.0,
+        'today_orders' => 0,
+        'open_orders' => 0,
+        'today_repairs' => 0,
+        'open_repairs' => 0,
+        'completed_repairs_today' => 0,
+        'payment_success_rate' => 0.0,
+        'payment_review' => 0,
+        'low_stock' => 0,
+        'out_of_stock' => 0,
+        'inventory_value' => 0.0,
+        'gross_profit_30' => 0.0,
+        'wholesale_pending' => 0,
+    ];
+}
+
+function default_chart_data(): array
+{
+    return [
+        'labels' => [],
+        'revenue' => [],
+        'repairsBooked' => [],
+        'repairsCompleted' => [],
+        'paymentLabels' => [],
+        'paymentValues' => [],
+        'orderLabels' => [],
+        'orderValues' => [],
+        'inventoryLabels' => [],
+        'inventoryValues' => [],
+    ];
+}
+
+function dashboard_cache_key(string $prefix): string
+{
+    $bucket = (int) floor(((int) date('i')) / 5) * 5;
+    return $prefix . ':' . date('Y-m-d-H') . '-' . str_pad((string) $bucket, 2, '0', STR_PAD_LEFT);
+}
+
+function dashboard_redis(): ?Redis
+{
+    static $redis = false;
+    if ($redis instanceof Redis) {
+        return $redis;
+    }
+    if ($redis === null || !class_exists(Redis::class)) {
+        return null;
+    }
+
+    try {
+        $candidate = new Redis();
+        if (!$candidate->connect((string) env('REDIS_HOST', '127.0.0.1'), (int) env('REDIS_PORT', '6379'), (float) env('REDIS_TIMEOUT', '1.0'))) {
+            $redis = null;
+            return null;
+        }
+        $password = (string) env('REDIS_PASSWORD', '');
+        if ($password !== '') {
+            $candidate->auth($password);
+        }
+        $database = (int) env('REDIS_DATABASE', '0');
+        if ($database > 0) {
+            $candidate->select($database);
+        }
+        $redis = $candidate;
+        return $redis;
+    } catch (Throwable) {
+        $redis = null;
+        return null;
+    }
+}
+
+function dashboard_cache_fetch(string $key): ?array
+{
+    if (function_exists('apcu_fetch')) {
+        $success = false;
+        $cached = apcu_fetch($key, $success);
+        if ($success && is_array($cached)) {
+            return $cached;
+        }
+    }
+
+    $redis = dashboard_redis();
+    if ($redis instanceof Redis) {
+        $raw = $redis->get($key);
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+    }
+
+    return null;
+}
+
+function dashboard_cache_store(string $key, array $value, int $ttl = 300): void
+{
+    if (function_exists('apcu_store')) {
+        apcu_store($key, $value, $ttl);
+    }
+
+    $redis = dashboard_redis();
+    if ($redis instanceof Redis) {
+        $redis->setex($key, $ttl, json_encode($value, JSON_THROW_ON_ERROR));
+    }
+}
+
+function compute_kpis(PDO $pdo): array
+{
+    $kpis = default_kpis();
+    $kpis['today_revenue'] = (float) scalar_value(
+        $pdo,
+        'SELECT COALESCE(SUM(amount), 0)
+         FROM payments
+         WHERE status = "paid"
+           AND DATE(COALESCE(verified_at, updated_at, created_at)) = CURDATE()'
+    );
+    $kpis['month_revenue'] = (float) scalar_value(
+        $pdo,
+        'SELECT COALESCE(SUM(amount), 0)
+         FROM payments
+         WHERE status = "paid"
+           AND COALESCE(verified_at, updated_at, created_at) >= DATE_FORMAT(CURDATE(), "%Y-%m-01")'
+    );
+    $kpis['today_orders'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURDATE()');
+    $kpis['open_orders'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM orders WHERE status IN ("pending", "confirmed", "processing", "ready")');
+    $kpis['today_repairs'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM repair_bookings WHERE DATE(created_at) = CURDATE()');
+    $kpis['open_repairs'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM repair_bookings WHERE status IN ("Pending", "pending", "In Progress", "in progress", "Unconfirmed", "unconfirmed")');
+    $kpis['completed_repairs_today'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM repair_bookings WHERE status IN ("Completed", "completed") AND DATE(updated_at) = CURDATE()');
+
+    $paymentAttempts = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM payments WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)');
+    $paidAttempts = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM payments WHERE status = "paid" AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)');
+    $kpis['payment_success_rate'] = percent_value($paidAttempts, $paymentAttempts);
+    $kpis['payment_review'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM payments WHERE status IN ("pending", "processing", "requires_review")');
+    $kpis['low_stock'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM inventory_items WHERE quantity <= reorder_point OR low_stock = 1');
+    $kpis['out_of_stock'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM inventory_items WHERE quantity <= 0 OR status = "sold_out"');
+    $kpis['inventory_value'] = (float) scalar_value($pdo, 'SELECT COALESCE(SUM(quantity * buy_price), 0) FROM inventory_items WHERE quantity > 0');
+    $kpis['gross_profit_30'] = (float) scalar_value($pdo, 'SELECT COALESCE(SUM(profit), 0) FROM inventory_transactions WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)');
+    $kpis['wholesale_pending'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM wholesale_applications WHERE status = "pending"');
+
+    return $kpis;
+}
+
+function cached_admin_kpis(PDO $pdo): array
+{
+    $cacheKey = dashboard_cache_key('admin_kpis');
+    $cached = dashboard_cache_fetch($cacheKey);
+    if (is_array($cached)) {
+        return $cached + default_kpis();
+    }
+
+    $kpis = compute_kpis($pdo);
+    dashboard_cache_store($cacheKey, $kpis, 300);
+    return $kpis;
 }
 
 function age_seconds(?string $datetime): int
@@ -190,6 +341,362 @@ function sla_label(int $ageSeconds, int $warningSeconds, int $breachSeconds): ar
     }
 
     return ['label' => 'On track', 'class' => 'sla-ok'];
+}
+
+function default_workstream(): array
+{
+    return [
+        'items' => [],
+        'stats' => [
+            'all' => 0,
+            'critical' => 0,
+            'payment' => 0,
+            'repair' => 0,
+            'inventory' => 0,
+            'wholesale' => 0,
+        ],
+        'metrics' => [
+            'bookings' => 0,
+            'parts' => 0,
+            'stock' => 0,
+            'mpesa' => 0,
+            'bank' => 0,
+            'wholesale' => 0,
+        ],
+        'timeline_days' => [],
+    ];
+}
+
+function fetch_analytics_cached(array $endpoints, array $queryByKey = []): array
+{
+    $analytics = new AnalyticsClient();
+    $payloads = [];
+
+    foreach ($endpoints as $key => $path) {
+        $payloads[$key] = $analytics->get((string) $path, (array) ($queryByKey[$key] ?? []));
+    }
+
+    return $payloads;
+}
+
+function build_workstream(PDO $pdo, ?array $user): array
+{
+    $result = default_workstream();
+    if (!$user) {
+        return $result;
+    }
+
+    $bookings = [];
+    $lowStock = [];
+    $partsNeeded = [];
+    $mpesaPayments = [];
+    $bankPayments = [];
+    $wholesaleApps = [];
+
+    if (can_view_operations($user)) {
+        $bookings = $pdo->query(
+            'SELECT *
+             FROM repair_bookings
+             WHERE status IN ("Pending", "pending", "Unconfirmed", "unconfirmed")
+             ORDER BY booking_date ASC, created_at ASC
+             LIMIT 8'
+        )->fetchAll();
+    }
+
+    if (can_view_inventory($user) || can_view_operations($user)) {
+        $lowStock = $pdo->query(
+            'SELECT *
+             FROM inventory_items
+             WHERE quantity <= reorder_point OR low_stock = 1
+             ORDER BY quantity ASC, updated_at ASC
+             LIMIT 8'
+        )->fetchAll();
+    }
+
+    foreach ($bookings as $booking) {
+        foreach ($lowStock as $item) {
+            $haystack = strtolower((string) $booking['device_model'] . ' ' . (string) $booking['repair_type'] . ' ' . (string) $booking['issue_description']);
+            $matchesRepair = str_contains($haystack, strtolower((string) $item['brand']))
+                || str_contains($haystack, strtolower((string) $item['model']))
+                || str_contains($haystack, strtolower((string) $item['part_type']));
+
+            if ($matchesRepair || count($partsNeeded) < 3) {
+                $partsNeeded[] = ['booking' => $booking, 'item' => $item];
+                break;
+            }
+        }
+    }
+
+    if (can_view_finance($user)) {
+        $mpesaPayments = $pdo->query(
+            'SELECT p.*, o.order_number, o.order_type, rb.id AS repair_id, rb.customer_name AS repair_customer
+             FROM payments p
+             LEFT JOIN orders o ON o.id = p.order_id
+             LEFT JOIN repair_bookings rb ON rb.id = p.repair_booking_id
+             WHERE p.payment_method = "mpesa_stk" AND p.status IN ("pending", "processing", "requires_review")
+             ORDER BY p.created_at DESC
+             LIMIT 8'
+        )->fetchAll();
+
+        $bankPayments = $pdo->query(
+            'SELECT p.*, o.order_number, o.order_type, o.customer_name AS order_customer, rb.customer_name AS repair_customer
+             FROM payments p
+             LEFT JOIN orders o ON o.id = p.order_id
+             LEFT JOIN repair_bookings rb ON rb.id = p.repair_booking_id
+             WHERE p.payment_method = "bank_transfer" AND p.status IN ("pending", "processing", "requires_review")
+             ORDER BY p.created_at ASC
+             LIMIT 8'
+        )->fetchAll();
+    }
+
+    if (can_manage_business($user)) {
+        $wholesaleApps = $pdo->query(
+            'SELECT *
+             FROM wholesale_applications
+             WHERE status = "pending"
+             ORDER BY created_at ASC
+             LIMIT 8'
+        )->fetchAll();
+    }
+
+    $workstreamItems = [];
+
+    foreach ($mpesaPayments as $payment) {
+        $age = age_seconds((string) $payment['created_at']);
+        $score = $age > 86400 ? 96 : ($age > 3600 ? 86 : 64);
+        $workstreamItems[] = [
+            'type' => 'payment',
+            'lane' => 'Revenue Blocked',
+            'icon' => 'fa-credit-card',
+            'score' => $score,
+            'priority' => priority_from_score($score),
+            'sla' => sla_label($age, 900, 3600),
+            'title' => $age > 3600 ? 'M-Pesa payment timed out' : 'M-Pesa awaiting callback',
+            'subject' => (string) ($payment['order_number'] ?: ('Payment #' . $payment['id'])),
+            'customer' => (string) ($payment['phone_number'] ?: 'Customer phone missing'),
+            'value' => money($payment['amount']),
+            'age' => time_ago((string) $payment['created_at']),
+            'impact' => $age > 3600 ? 'Revenue and fulfillment are blocked until finance resolves this payment.' : 'Payment prompt is still processing; monitor before fulfillment.',
+            'actions' => [
+                ['kind' => 'form', 'label' => 'Mark paid', 'class' => 'btn-confirm', 'fields' => ['action' => 'mark_payment_paid', 'payment_id' => (int) $payment['id']]],
+                ['kind' => 'form', 'label' => 'Flag', 'class' => 'btn-danger', 'fields' => ['action' => 'flag_payment', 'payment_id' => (int) $payment['id']]],
+                ['kind' => 'link', 'label' => 'Payments', 'class' => 'btn-view', 'href' => 'admin_payments.php?status=' . urlencode((string) $payment['status'])],
+            ],
+        ];
+    }
+
+    foreach ($bankPayments as $payment) {
+        $age = age_seconds((string) $payment['created_at']);
+        $score = $age > 86400 ? 88 : 68;
+        $workstreamItems[] = [
+            'type' => 'payment',
+            'lane' => 'Revenue Blocked',
+            'icon' => 'fa-building-columns',
+            'score' => $score,
+            'priority' => priority_from_score($score),
+            'sla' => sla_label($age, 14400, 86400),
+            'title' => 'Bank transfer needs review',
+            'subject' => (string) ($payment['order_number'] ?: ('Payment #' . $payment['id'])),
+            'customer' => (string) ($payment['order_customer'] ?: $payment['repair_customer'] ?: $payment['phone_number']),
+            'value' => money($payment['amount']),
+            'age' => time_ago((string) $payment['created_at']),
+            'impact' => 'Manual verification is needed before revenue is recognized or fulfillment proceeds.',
+            'actions' => [
+                ['kind' => 'form', 'label' => 'Approve', 'class' => 'btn-confirm', 'fields' => ['action' => 'approve_bank', 'payment_id' => (int) $payment['id']]],
+                ['kind' => 'form', 'label' => 'Query', 'class' => 'btn-reject', 'fields' => ['action' => 'query_bank', 'payment_id' => (int) $payment['id']]],
+                ['kind' => 'link', 'label' => 'Payments', 'class' => 'btn-view', 'href' => 'admin_payments.php?method=bank_transfer'],
+            ],
+        ];
+    }
+
+    foreach ($bookings as $booking) {
+        $age = age_seconds((string) $booking['created_at']);
+        $score = $age > 86400 ? 92 : ($age > 14400 ? 75 : 58);
+        $workstreamItems[] = [
+            'type' => 'repair',
+            'lane' => 'Customer Waiting',
+            'icon' => 'fa-mobile-screen',
+            'score' => $score,
+            'priority' => priority_from_score($score),
+            'sla' => sla_label($age, 1800, 14400),
+            'title' => 'Repair booking needs confirmation',
+            'subject' => (string) $booking['device_model'] . ' - ' . (string) $booking['repair_type'],
+            'customer' => (string) $booking['customer_name'],
+            'value' => money($booking['estimated_price'] ?? 0),
+            'age' => time_ago((string) $booking['created_at']),
+            'impact' => 'Customer is waiting for confirmation before the repair pipeline can start.',
+            'actions' => [
+                ['kind' => 'form', 'label' => 'Confirm', 'class' => 'btn-confirm', 'fields' => ['action' => 'confirm_booking', 'booking_id' => (int) $booking['id']]],
+                ['kind' => 'link', 'label' => 'View', 'class' => 'btn-view', 'href' => 'admin_repairs.php'],
+            ],
+        ];
+    }
+
+    foreach ($partsNeeded as $part) {
+        $item = $part['item'];
+        $booking = $part['booking'];
+        $qty = (int) $item['quantity'];
+        $score = $qty <= 0 ? 94 : 72;
+        $workstreamItems[] = [
+            'type' => 'inventory',
+            'lane' => 'Stock Risk',
+            'icon' => 'fa-microchip',
+            'score' => $score,
+            'priority' => priority_from_score($score),
+            'sla' => ['label' => $qty <= 0 ? 'Repair blocked' : 'Low buffer', 'class' => $qty <= 0 ? 'sla-breached' : 'sla-warning'],
+            'title' => $qty <= 0 ? 'Part unavailable for repair' : 'Part stock may block repair',
+            'subject' => (string) $item['brand'] . ' ' . (string) $item['model'] . ' ' . (string) $item['part_type'],
+            'customer' => 'For ' . (string) $booking['customer_name'],
+            'value' => number_format($qty) . ' units',
+            'age' => 'Reorder at ' . number_format((int) $item['reorder_point']),
+            'impact' => $qty <= 0 ? 'Repair cannot be completed until this part is sourced.' : 'Repair demand is close to exhausting available stock.',
+            'actions' => [
+                ['kind' => 'form', 'label' => $qty <= 0 ? 'Order' : 'Restock', 'class' => $qty <= 0 ? 'btn-danger' : 'btn-warn', 'fields' => ['action' => 'urgent_restock', 'inventory_item_id' => (int) $item['id']]],
+                ['kind' => 'link', 'label' => 'Inventory', 'class' => 'btn-view', 'href' => 'admin_inventory.php'],
+            ],
+        ];
+    }
+
+    foreach ($lowStock as $item) {
+        $qty = (int) $item['quantity'];
+        $score = $qty <= 0 ? 90 : 66;
+        $workstreamItems[] = [
+            'type' => 'inventory',
+            'lane' => 'Stock Risk',
+            'icon' => 'fa-cubes-stacked',
+            'score' => $score,
+            'priority' => priority_from_score($score),
+            'sla' => ['label' => $qty <= 0 ? 'Stockout' : 'Reorder now', 'class' => $qty <= 0 ? 'sla-breached' : 'sla-warning'],
+            'title' => $qty <= 0 ? 'Inventory line is out of stock' : 'Inventory line is below reorder point',
+            'subject' => (string) $item['brand'] . ' ' . (string) $item['model'] . ' ' . (string) $item['part_type'],
+            'customer' => 'Stock control',
+            'value' => number_format($qty) . ' units',
+            'age' => 'Reorder at ' . number_format((int) $item['reorder_point']),
+            'impact' => 'Protect repair completion, shop sales, and wholesale fulfillment from stockouts.',
+            'actions' => [
+                ['kind' => 'form', 'label' => $qty <= 0 ? 'Urgent order' : 'Reorder', 'class' => $qty <= 0 ? 'btn-danger' : 'btn-warn', 'fields' => ['action' => 'urgent_restock', 'inventory_item_id' => (int) $item['id']]],
+                ['kind' => 'link', 'label' => 'Manage', 'class' => 'btn-view', 'href' => 'admin_inventory.php'],
+            ],
+        ];
+    }
+
+    foreach ($wholesaleApps as $application) {
+        $age = age_seconds((string) $application['created_at']);
+        $score = $age > 172800 ? 70 : 48;
+        $workstreamItems[] = [
+            'type' => 'wholesale',
+            'lane' => 'Growth Opportunity',
+            'icon' => 'fa-store',
+            'score' => $score,
+            'priority' => priority_from_score($score),
+            'sla' => sla_label($age, 86400, 172800),
+            'title' => 'Wholesale application awaiting decision',
+            'subject' => (string) $application['business_name'],
+            'customer' => (string) $application['contact_name'] . ' - ' . (string) $application['business_location'],
+            'value' => 'New account',
+            'age' => time_ago((string) $application['created_at']),
+            'impact' => 'A qualified reseller may unlock repeat wholesale revenue.',
+            'actions' => [
+                ['kind' => 'form', 'label' => 'Approve', 'class' => 'btn-confirm', 'fields' => ['action' => 'approve_wholesale', 'application_id' => (int) $application['id']]],
+                ['kind' => 'form', 'label' => 'Defer', 'class' => 'btn-reject', 'fields' => ['action' => 'defer_wholesale', 'application_id' => (int) $application['id']]],
+            ],
+        ];
+    }
+
+    usort($workstreamItems, static fn (array $a, array $b): int => ($b['score'] <=> $a['score']));
+
+    $timelineDays = [];
+    for ($day = 0; $day < 5; $day++) {
+        $label = $day === 0 ? 'Today' : date('D', strtotime('+' . $day . ' days'));
+        $timelineDays[] = ['label' => $label, 'items' => []];
+    }
+
+    foreach ($partsNeeded as $index => $part) {
+        $dayIndex = min(4, $index);
+        $timelineDays[$dayIndex]['items'][] = [
+            'label' => (string) $part['item']['part_type'],
+            'need' => (int) $part['item']['quantity'] <= 0,
+        ];
+    }
+
+    $result['items'] = $workstreamItems;
+    $result['stats'] = [
+        'all' => count($workstreamItems),
+        'critical' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['priority'] === 'critical')),
+        'payment' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'payment')),
+        'repair' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'repair')),
+        'inventory' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'inventory')),
+        'wholesale' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'wholesale')),
+    ];
+    $result['metrics'] = [
+        'bookings' => count($bookings),
+        'parts' => count($partsNeeded),
+        'stock' => count($lowStock),
+        'mpesa' => count($mpesaPayments),
+        'bank' => count($bankPayments),
+        'wholesale' => count($wholesaleApps),
+    ];
+    $result['timeline_days'] = $timelineDays;
+
+    return $result;
+}
+
+function build_customer_journey(PDO $pdo, ?array $user, int $limit = 50): array
+{
+    if (!$user) {
+        return [];
+    }
+
+    $events = [];
+    if (can_view_operations($user)) {
+        $events[] = '
+            SELECT
+                "repair" AS event_type,
+                id,
+                COALESCE(NULLIF(customer_name, ""), "Repair customer") AS actor,
+                status AS state,
+                created_at,
+                CONCAT(device_model, " - ", repair_type) AS subject,
+                NULL AS value
+            FROM repair_bookings
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)';
+    }
+
+    if (can_view_finance($user) || can_manage_business($user)) {
+        $events[] = '
+            SELECT
+                "order" AS event_type,
+                id,
+                COALESCE(NULLIF(customer_name, ""), "Order customer") AS actor,
+                CONCAT(status, "/", payment_status) AS state,
+                created_at,
+                order_number AS subject,
+                NULL AS value
+            FROM orders
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)';
+    }
+
+    if (can_view_finance($user)) {
+        $events[] = '
+            SELECT
+                "payment" AS event_type,
+                id,
+                COALESCE(NULLIF(phone_number, ""), "Payment contact") AS actor,
+                status AS state,
+                created_at,
+                payment_method AS subject,
+                amount AS value
+            FROM payments
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)';
+    }
+
+    if ($events === []) {
+        return [];
+    }
+
+    $sql = implode("\nUNION ALL\n", $events) . "\nORDER BY created_at DESC LIMIT " . max(1, min(100, $limit));
+    $stmt = $pdo->query($sql);
+    return $stmt ? $stmt->fetchAll() : [];
 }
 
 $adminCount = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
@@ -399,13 +906,6 @@ if ($user && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$bookings = [];
-$lowStock = [];
-$partsNeeded = [];
-$mpesaPayments = [];
-$bankPayments = [];
-$wholesaleApps = [];
-$timelineDays = [];
 $blogSuggestions = [
     ['queries' => 47, 'topic' => 'iPhone screen repair cost guide - Kenya 2026', 'meta' => 'Most asked pricing question'],
     ['queries' => 34, 'topic' => 'How long does a phone battery replacement take?', 'meta' => 'Common pre-booking question'],
@@ -414,432 +914,69 @@ $blogSuggestions = [
     ['queries' => 15, 'topic' => 'M-Pesa payment not confirming? What to check', 'meta' => 'Payment support deflection'],
 ];
 
-$metrics = [
-    'bookings' => 0,
-    'parts' => 0,
-    'stock' => 0,
-    'mpesa' => 0,
-    'bank' => 0,
-    'wholesale' => 0,
-];
-
-if ($user) {
-    $bookings = $pdo->query(
-        'SELECT *
-         FROM repair_bookings
-         WHERE status IN ("Pending", "pending", "Unconfirmed", "unconfirmed")
-         ORDER BY booking_date ASC, created_at ASC
-         LIMIT 8'
-    )->fetchAll();
-
-    $lowStock = $pdo->query(
-        'SELECT *
-         FROM inventory_items
-         WHERE quantity <= reorder_point OR low_stock = 1
-         ORDER BY quantity ASC, updated_at ASC
-         LIMIT 8'
-    )->fetchAll();
-
-    foreach ($bookings as $booking) {
-        foreach ($lowStock as $item) {
-            $haystack = strtolower((string) $booking['device_model'] . ' ' . (string) $booking['repair_type'] . ' ' . (string) $booking['issue_description']);
-            $needle = strtolower((string) $item['brand'] . ' ' . (string) $item['model'] . ' ' . (string) $item['part_type']);
-            $matchesRepair = str_contains($haystack, strtolower((string) $item['brand']))
-                || str_contains($haystack, strtolower((string) $item['model']))
-                || str_contains($haystack, strtolower((string) $item['part_type']));
-
-            if ($matchesRepair || count($partsNeeded) < 3) {
-                $partsNeeded[] = ['booking' => $booking, 'item' => $item];
-                break;
-            }
-        }
-    }
-
-    $mpesaPayments = $pdo->query(
-        'SELECT p.*, o.order_number, o.order_type, rb.id AS repair_id, rb.customer_name AS repair_customer
-         FROM payments p
-         LEFT JOIN orders o ON o.id = p.order_id
-         LEFT JOIN repair_bookings rb ON rb.id = p.repair_booking_id
-         WHERE p.payment_method = "mpesa_stk" AND p.status IN ("pending", "processing", "requires_review")
-         ORDER BY p.created_at DESC
-         LIMIT 8'
-    )->fetchAll();
-
-    $bankPayments = $pdo->query(
-        'SELECT p.*, o.order_number, o.order_type, o.customer_name AS order_customer, rb.customer_name AS repair_customer
-         FROM payments p
-         LEFT JOIN orders o ON o.id = p.order_id
-         LEFT JOIN repair_bookings rb ON rb.id = p.repair_booking_id
-         WHERE p.payment_method = "bank_transfer" AND p.status IN ("pending", "processing", "requires_review")
-         ORDER BY p.created_at ASC
-         LIMIT 8'
-    )->fetchAll();
-
-    $wholesaleApps = $pdo->query(
-        'SELECT *
-         FROM wholesale_applications
-         WHERE status = "pending"
-         ORDER BY created_at ASC
-         LIMIT 8'
-    )->fetchAll();
-
-    for ($day = 0; $day < 5; $day++) {
-        $label = $day === 0 ? 'Today' : date('D', strtotime('+' . $day . ' days'));
-        $timelineDays[] = ['label' => $label, 'items' => []];
-    }
-
-    foreach ($partsNeeded as $index => $part) {
-        $dayIndex = min(4, $index);
-        $timelineDays[$dayIndex]['items'][] = [
-            'label' => (string) $part['item']['part_type'],
-            'need' => (int) $part['item']['quantity'] <= 0,
-        ];
-    }
-
-    $metrics = [
-        'bookings' => count($bookings),
-        'parts' => count($partsNeeded),
-        'stock' => count($lowStock),
-        'mpesa' => count($mpesaPayments),
-        'bank' => count($bankPayments),
-        'wholesale' => count($wholesaleApps),
-    ];
-}
-
 $role = user_role($user);
 $canSeeFinance = can_view_finance($user);
 $canSeeOps = can_view_operations($user);
 $canSeeInventory = can_view_inventory($user);
 $canManageBusiness = can_manage_business($user);
 
-$kpis = [
-    'today_revenue' => 0.0,
-    'month_revenue' => 0.0,
-    'today_orders' => 0,
-    'open_orders' => 0,
-    'today_repairs' => 0,
-    'open_repairs' => 0,
-    'completed_repairs_today' => 0,
-    'payment_success_rate' => 0.0,
-    'payment_review' => 0,
-    'low_stock' => $metrics['stock'],
-    'out_of_stock' => 0,
-    'inventory_value' => 0.0,
-    'gross_profit_30' => 0.0,
-    'wholesale_pending' => $metrics['wholesale'],
-];
+$workstream = $user ? build_workstream($pdo, $user) : default_workstream();
+$workstreamItems = $workstream['items'];
+$workstreamStats = $workstream['stats'];
+$metrics = $workstream['metrics'];
+$timelineDays = $workstream['timeline_days'];
+$urgentActions = count($workstreamItems);
+$customerJourney = $user ? build_customer_journey($pdo, $user) : [];
 
-$chartData = [
-    'labels' => [],
-    'revenue' => [],
-    'repairsBooked' => [],
-    'repairsCompleted' => [],
-    'paymentLabels' => [],
-    'paymentValues' => [],
-    'orderLabels' => [],
-    'orderValues' => [],
-    'inventoryLabels' => [],
-    'inventoryValues' => [],
-];
-
+$kpis = default_kpis();
+$chartData = default_chart_data();
 $topMovers = [];
 $recentSignals = [];
+$analyticsForecast = ['_available' => false];
+$analyticsReorders = ['_available' => false];
+$analyticsCohorts = ['_available' => false];
+$analyticsCharts = ['_available' => false];
 
 if ($user) {
-    $kpis['today_revenue'] = (float) scalar_value(
-        $pdo,
-        'SELECT COALESCE(SUM(amount), 0)
-         FROM payments
-         WHERE status = "paid"
-           AND DATE(COALESCE(verified_at, updated_at, created_at)) = CURDATE()'
-    );
-    $kpis['month_revenue'] = (float) scalar_value(
-        $pdo,
-        'SELECT COALESCE(SUM(amount), 0)
-         FROM payments
-         WHERE status = "paid"
-           AND COALESCE(verified_at, updated_at, created_at) >= DATE_FORMAT(CURDATE(), "%Y-%m-01")'
-    );
-    $kpis['today_orders'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM orders WHERE DATE(created_at) = CURDATE()');
-    $kpis['open_orders'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM orders WHERE status IN ("pending", "confirmed", "processing", "ready")');
-    $kpis['today_repairs'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM repair_bookings WHERE DATE(created_at) = CURDATE()');
-    $kpis['open_repairs'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM repair_bookings WHERE status IN ("Pending", "pending", "In Progress", "in progress", "Unconfirmed", "unconfirmed")');
-    $kpis['completed_repairs_today'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM repair_bookings WHERE status IN ("Completed", "completed") AND DATE(updated_at) = CURDATE()');
-    $paymentAttempts = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM payments WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)');
-    $paidAttempts = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM payments WHERE status = "paid" AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)');
-    $kpis['payment_success_rate'] = percent_value($paidAttempts, $paymentAttempts);
-    $kpis['payment_review'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM payments WHERE status IN ("pending", "processing", "requires_review")');
-    $kpis['out_of_stock'] = (int) scalar_value($pdo, 'SELECT COUNT(*) FROM inventory_items WHERE quantity <= 0 OR status = "sold_out"');
-    $kpis['inventory_value'] = (float) scalar_value($pdo, 'SELECT COALESCE(SUM(quantity * buy_price), 0) FROM inventory_items WHERE quantity > 0');
-    $kpis['gross_profit_30'] = (float) scalar_value($pdo, 'SELECT COALESCE(SUM(profit), 0) FROM inventory_transactions WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)');
+    $kpis = cached_admin_kpis($pdo);
 
-    $dateLabels = [];
-    for ($offset = 13; $offset >= 0; $offset--) {
-        $date = date('Y-m-d', strtotime('-' . $offset . ' days'));
-        $dateLabels[$date] = [
-            'label' => date('M j', strtotime($date)),
-            'revenue' => 0.0,
-            'booked' => 0,
-            'completed' => 0,
-        ];
-    }
+    if ($canManageBusiness || $canSeeFinance || $canSeeInventory) {
+        $analyticsEndpoints = ['charts' => '/api/analytics/dashboard-charts'];
+        $analyticsQueries = [];
 
-    foreach (rows(
-        $pdo,
-        'SELECT DATE(COALESCE(verified_at, updated_at, created_at)) AS metric_day, COALESCE(SUM(amount), 0) AS total
-         FROM payments
-         WHERE status = "paid"
-           AND COALESCE(verified_at, updated_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
-         GROUP BY DATE(COALESCE(verified_at, updated_at, created_at))'
-    ) as $row) {
-        $dayKey = (string) $row['metric_day'];
-        if (isset($dateLabels[$dayKey])) {
-            $dateLabels[$dayKey]['revenue'] = (float) $row['total'];
+        if ($canManageBusiness || $canSeeFinance) {
+            $analyticsEndpoints['revenue_forecast'] = '/api/analytics/revenue-forecast';
+            $analyticsEndpoints['cohort_retention'] = '/api/analytics/cohort-retention';
+            $analyticsQueries['revenue_forecast'] = ['days' => 30];
+        }
+
+        if ($canManageBusiness || $canSeeInventory) {
+            $analyticsEndpoints['reorder_signals'] = '/api/analytics/reorder-signals';
+        }
+
+        $analyticsPayloads = fetch_analytics_cached($analyticsEndpoints, $analyticsQueries);
+
+        $analyticsCharts = (array) ($analyticsPayloads['charts'] ?? ['_available' => false]);
+        if ((bool) ($analyticsCharts['_available'] ?? false)) {
+            $chartData = (array) ($analyticsCharts['chart_data'] ?? default_chart_data()) + default_chart_data();
+            $topMovers = array_values(array_filter((array) ($analyticsCharts['top_movers'] ?? []), static fn (mixed $row): bool => is_array($row)));
+            $recentSignals = array_values(array_filter((array) ($analyticsCharts['recent_signals'] ?? []), static fn (mixed $row): bool => is_array($row)));
+        }
+        if ($canManageBusiness || $canSeeFinance) {
+            $analyticsForecast = (array) ($analyticsPayloads['revenue_forecast'] ?? ['_available' => false]);
+            $analyticsCohorts = (array) ($analyticsPayloads['cohort_retention'] ?? ['_available' => false]);
+        }
+        if ($canManageBusiness || $canSeeInventory) {
+            $analyticsReorders = (array) ($analyticsPayloads['reorder_signals'] ?? ['_available' => false]);
         }
     }
-
-    foreach (rows(
-        $pdo,
-        'SELECT DATE(created_at) AS metric_day, COUNT(*) AS total
-         FROM repair_bookings
-         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
-         GROUP BY DATE(created_at)'
-    ) as $row) {
-        $dayKey = (string) $row['metric_day'];
-        if (isset($dateLabels[$dayKey])) {
-            $dateLabels[$dayKey]['booked'] = (int) $row['total'];
-        }
-    }
-
-    foreach (rows(
-        $pdo,
-        'SELECT DATE(updated_at) AS metric_day, COUNT(*) AS total
-         FROM repair_bookings
-         WHERE status IN ("Completed", "completed")
-           AND updated_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
-         GROUP BY DATE(updated_at)'
-    ) as $row) {
-        $dayKey = (string) $row['metric_day'];
-        if (isset($dateLabels[$dayKey])) {
-            $dateLabels[$dayKey]['completed'] = (int) $row['total'];
-        }
-    }
-
-    foreach ($dateLabels as $bucket) {
-        $chartData['labels'][] = $bucket['label'];
-        $chartData['revenue'][] = $bucket['revenue'];
-        $chartData['repairsBooked'][] = $bucket['booked'];
-        $chartData['repairsCompleted'][] = $bucket['completed'];
-    }
-
-    foreach (rows($pdo, 'SELECT status, COUNT(*) AS total FROM payments WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY status ORDER BY total DESC') as $row) {
-        $chartData['paymentLabels'][] = ucwords(str_replace('_', ' ', (string) $row['status']));
-        $chartData['paymentValues'][] = (int) $row['total'];
-    }
-
-    foreach (rows($pdo, 'SELECT status, COUNT(*) AS total FROM orders WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY status ORDER BY total DESC') as $row) {
-        $chartData['orderLabels'][] = ucwords((string) $row['status']);
-        $chartData['orderValues'][] = (int) $row['total'];
-    }
-
-    foreach (rows($pdo, 'SELECT part_type, SUM(quantity) AS total FROM inventory_items GROUP BY part_type ORDER BY total ASC LIMIT 8') as $row) {
-        $chartData['inventoryLabels'][] = (string) $row['part_type'];
-        $chartData['inventoryValues'][] = (int) $row['total'];
-    }
-
-    $topMovers = rows(
-        $pdo,
-        'SELECT brand, model, part_type, COALESCE(SUM(quantity), 0) AS units, COALESCE(SUM(total_revenue), 0) AS revenue, COALESCE(SUM(profit), 0) AS profit
-         FROM inventory_transactions
-         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-         GROUP BY brand, model, part_type
-         ORDER BY units DESC, revenue DESC
-         LIMIT 6'
-    );
-
-    $recentSignals = rows(
-        $pdo,
-        '(SELECT "payment" AS signal_type, CONCAT(payment_method, " ", status) AS title, amount AS value, created_at
-          FROM payments
-          ORDER BY created_at DESC
-          LIMIT 4)
-         UNION ALL
-         (SELECT "repair" AS signal_type, CONCAT(device_model, " ", repair_type) AS title, estimated_price AS value, created_at
-          FROM repair_bookings
-          ORDER BY created_at DESC
-          LIMIT 4)
-         ORDER BY created_at DESC
-         LIMIT 6'
-    );
 }
 
-$workstreamItems = [];
-
-if ($canSeeFinance) {
-    foreach ($mpesaPayments as $payment) {
-        $age = age_seconds((string) $payment['created_at']);
-        $score = $age > 86400 ? 96 : ($age > 3600 ? 86 : 64);
-        $sla = sla_label($age, 900, 3600);
-        $workstreamItems[] = [
-            'type' => 'payment',
-            'lane' => 'Revenue Blocked',
-            'icon' => 'fa-credit-card',
-            'score' => $score,
-            'priority' => priority_from_score($score),
-            'sla' => $sla,
-            'title' => $age > 3600 ? 'M-Pesa payment timed out' : 'M-Pesa awaiting callback',
-            'subject' => (string) ($payment['order_number'] ?: ('Payment #' . $payment['id'])),
-            'customer' => (string) ($payment['phone_number'] ?: 'Customer phone missing'),
-            'value' => money($payment['amount']),
-            'age' => time_ago((string) $payment['created_at']),
-            'impact' => $age > 3600 ? 'Revenue and fulfillment are blocked until finance resolves this payment.' : 'Payment prompt is still processing; monitor before fulfillment.',
-            'actions' => [
-                ['kind' => 'form', 'label' => 'Mark paid', 'class' => 'btn-confirm', 'fields' => ['action' => 'mark_payment_paid', 'payment_id' => (int) $payment['id']]],
-                ['kind' => 'form', 'label' => 'Flag', 'class' => 'btn-danger', 'fields' => ['action' => 'flag_payment', 'payment_id' => (int) $payment['id']]],
-                ['kind' => 'link', 'label' => 'Orders', 'class' => 'btn-view', 'href' => 'admin_orders.php'],
-            ],
-        ];
-    }
-
-    foreach ($bankPayments as $payment) {
-        $age = age_seconds((string) $payment['created_at']);
-        $score = $age > 86400 ? 88 : 68;
-        $sla = sla_label($age, 14400, 86400);
-        $workstreamItems[] = [
-            'type' => 'payment',
-            'lane' => 'Revenue Blocked',
-            'icon' => 'fa-building-columns',
-            'score' => $score,
-            'priority' => priority_from_score($score),
-            'sla' => $sla,
-            'title' => 'Bank transfer needs review',
-            'subject' => (string) ($payment['order_number'] ?: ('Payment #' . $payment['id'])),
-            'customer' => (string) ($payment['order_customer'] ?: $payment['repair_customer'] ?: $payment['phone_number']),
-            'value' => money($payment['amount']),
-            'age' => time_ago((string) $payment['created_at']),
-            'impact' => 'Manual verification is needed before revenue is recognized or fulfillment proceeds.',
-            'actions' => [
-                ['kind' => 'form', 'label' => 'Approve', 'class' => 'btn-confirm', 'fields' => ['action' => 'approve_bank', 'payment_id' => (int) $payment['id']]],
-                ['kind' => 'form', 'label' => 'Query', 'class' => 'btn-reject', 'fields' => ['action' => 'query_bank', 'payment_id' => (int) $payment['id']]],
-            ],
-        ];
-    }
-}
-
-if ($canSeeOps) {
-    foreach ($bookings as $booking) {
-        $age = age_seconds((string) $booking['created_at']);
-        $score = $age > 86400 ? 92 : ($age > 14400 ? 75 : 58);
-        $sla = sla_label($age, 1800, 14400);
-        $workstreamItems[] = [
-            'type' => 'repair',
-            'lane' => 'Customer Waiting',
-            'icon' => 'fa-mobile-screen',
-            'score' => $score,
-            'priority' => priority_from_score($score),
-            'sla' => $sla,
-            'title' => 'Repair booking needs confirmation',
-            'subject' => (string) $booking['device_model'] . ' - ' . (string) $booking['repair_type'],
-            'customer' => (string) $booking['customer_name'],
-            'value' => money($booking['estimated_price'] ?? 0),
-            'age' => time_ago((string) $booking['created_at']),
-            'impact' => 'Customer is waiting for confirmation before the repair pipeline can start.',
-            'actions' => [
-                ['kind' => 'form', 'label' => 'Confirm', 'class' => 'btn-confirm', 'fields' => ['action' => 'confirm_booking', 'booking_id' => (int) $booking['id']]],
-                ['kind' => 'link', 'label' => 'View', 'class' => 'btn-view', 'href' => 'admin_repairs.php'],
-            ],
-        ];
-    }
-
-    foreach ($partsNeeded as $part) {
-        $item = $part['item'];
-        $booking = $part['booking'];
-        $qty = (int) $item['quantity'];
-        $score = $qty <= 0 ? 94 : 72;
-        $workstreamItems[] = [
-            'type' => 'inventory',
-            'lane' => 'Stock Risk',
-            'icon' => 'fa-microchip',
-            'score' => $score,
-            'priority' => priority_from_score($score),
-            'sla' => ['label' => $qty <= 0 ? 'Repair blocked' : 'Low buffer', 'class' => $qty <= 0 ? 'sla-breached' : 'sla-warning'],
-            'title' => $qty <= 0 ? 'Part unavailable for repair' : 'Part stock may block repair',
-            'subject' => (string) $item['brand'] . ' ' . (string) $item['model'] . ' ' . (string) $item['part_type'],
-            'customer' => 'For ' . (string) $booking['customer_name'],
-            'value' => number_format($qty) . ' units',
-            'age' => 'Reorder at ' . number_format((int) $item['reorder_point']),
-            'impact' => $qty <= 0 ? 'Repair cannot be completed until this part is sourced.' : 'Repair demand is close to exhausting available stock.',
-            'actions' => [
-                ['kind' => 'form', 'label' => $qty <= 0 ? 'Order' : 'Restock', 'class' => $qty <= 0 ? 'btn-danger' : 'btn-warn', 'fields' => ['action' => 'urgent_restock', 'inventory_item_id' => (int) $item['id']]],
-                ['kind' => 'link', 'label' => 'Inventory', 'class' => 'btn-view', 'href' => 'admin_inventory.php'],
-            ],
-        ];
-    }
-}
-
-if ($canSeeInventory) {
-    foreach ($lowStock as $item) {
-        $qty = (int) $item['quantity'];
-        $score = $qty <= 0 ? 90 : 66;
-        $workstreamItems[] = [
-            'type' => 'inventory',
-            'lane' => 'Stock Risk',
-            'icon' => 'fa-cubes-stacked',
-            'score' => $score,
-            'priority' => priority_from_score($score),
-            'sla' => ['label' => $qty <= 0 ? 'Stockout' : 'Reorder now', 'class' => $qty <= 0 ? 'sla-breached' : 'sla-warning'],
-            'title' => $qty <= 0 ? 'Inventory line is out of stock' : 'Inventory line is below reorder point',
-            'subject' => (string) $item['brand'] . ' ' . (string) $item['model'] . ' ' . (string) $item['part_type'],
-            'customer' => 'Stock control',
-            'value' => number_format($qty) . ' units',
-            'age' => 'Reorder at ' . number_format((int) $item['reorder_point']),
-            'impact' => 'Protect repair completion, shop sales, and wholesale fulfillment from stockouts.',
-            'actions' => [
-                ['kind' => 'form', 'label' => $qty <= 0 ? 'Urgent order' : 'Reorder', 'class' => $qty <= 0 ? 'btn-danger' : 'btn-warn', 'fields' => ['action' => 'urgent_restock', 'inventory_item_id' => (int) $item['id']]],
-                ['kind' => 'link', 'label' => 'Manage', 'class' => 'btn-view', 'href' => 'admin_inventory.php'],
-            ],
-        ];
-    }
-}
-
-if ($canManageBusiness) {
-    foreach ($wholesaleApps as $application) {
-        $age = age_seconds((string) $application['created_at']);
-        $score = $age > 172800 ? 70 : 48;
-        $sla = sla_label($age, 86400, 172800);
-        $workstreamItems[] = [
-            'type' => 'wholesale',
-            'lane' => 'Growth Opportunity',
-            'icon' => 'fa-store',
-            'score' => $score,
-            'priority' => priority_from_score($score),
-            'sla' => $sla,
-            'title' => 'Wholesale application awaiting decision',
-            'subject' => (string) $application['business_name'],
-            'customer' => (string) $application['contact_name'] . ' - ' . (string) $application['business_location'],
-            'value' => 'New account',
-            'age' => time_ago((string) $application['created_at']),
-            'impact' => 'A qualified reseller may unlock repeat wholesale revenue.',
-            'actions' => [
-                ['kind' => 'form', 'label' => 'Approve', 'class' => 'btn-confirm', 'fields' => ['action' => 'approve_wholesale', 'application_id' => (int) $application['id']]],
-                ['kind' => 'form', 'label' => 'Defer', 'class' => 'btn-reject', 'fields' => ['action' => 'defer_wholesale', 'application_id' => (int) $application['id']]],
-            ],
-        ];
-    }
-}
-
-usort($workstreamItems, static fn (array $a, array $b): int => ($b['score'] <=> $a['score']));
-
-$workstreamStats = [
-    'all' => count($workstreamItems),
-    'critical' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['priority'] === 'critical')),
-    'payment' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'payment')),
-    'repair' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'repair')),
-    'inventory' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'inventory')),
-    'wholesale' => count(array_filter($workstreamItems, static fn (array $item): bool => $item['type'] === 'wholesale')),
-];
-
-$urgentActions = count($workstreamItems);
+$analyticsReorderRows = array_values(array_filter($analyticsReorders, static fn (mixed $row): bool => is_array($row) && isset($row['id'])));
+$analyticsCohortRows = array_values(array_filter((array) ($analyticsCohorts['cohorts'] ?? []), static fn (mixed $row): bool => is_array($row)));
+$analyticsAvailable = (bool) ($analyticsForecast['_available'] ?? false)
+    || (bool) ($analyticsReorders['_available'] ?? false)
+    || (bool) ($analyticsCohorts['_available'] ?? false);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -966,6 +1103,18 @@ $urgentActions = count($workstreamItems);
     .mini-main strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mini-main span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
     .mini-value { font-weight: 900; white-space: nowrap; }
+    .journey-panel { grid-column: 1 / -1; }
+    .journey-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .journey-list .empty { grid-column: 1 / -1; }
+    .journey-event { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); min-width: 0; color: inherit; text-decoration: none; }
+    .journey-event:hover { background: #fff; border-color: var(--line-strong); }
+    .journey-icon { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; }
+    .journey-main { min-width: 0; }
+    .journey-main strong { display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .journey-main span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .journey-meta { text-align: right; min-width: 84px; }
+    .journey-meta strong { display: block; font-size: 11px; color: var(--text); white-space: nowrap; }
+    .journey-meta span { display: block; margin-top: 3px; font-size: 10px; color: var(--muted); white-space: nowrap; }
     .automation-strip { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 12px; padding: 13px 14px; background: #111827; color: #fff; border-radius: 8px; }
     .automation-strip strong { display: block; font-size: 13px; }
     .automation-strip span { display: block; color: #cbd5e1; font-size: 12px; margin-top: 3px; }
@@ -1001,7 +1150,7 @@ $urgentActions = count($workstreamItems);
     .queue-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; min-width: 180px; }
     .queue-empty { padding: 28px; border: 1px dashed var(--line-strong); border-radius: 8px; background: #fff; text-align: center; color: var(--muted); }
     @media (max-width: 1080px) { .wrap { grid-template-columns: 1fr; } .ops-rail { position: static; height: auto; flex-direction: row; align-items: center; overflow-x: auto; } .rail-brand, .rail-profile { flex: 0 0 auto; border-bottom: none; } .rail-section { flex: 1 0 auto; } .rail-nav { display: flex; } .kpi-grid { grid-template-columns: repeat(3, 1fr); } .main, .chart-grid, .insight-grid { grid-template-columns: 1fr; } }
-    @media (max-width: 720px) { .ops-rail { align-items: flex-start; } .rail-profile { display: none; } .top-bar, .cockpit-hero, .automation-strip, .workstream-intro { align-items: flex-start; } .cockpit, .command-board { padding: 12px; } .kpi-grid { grid-template-columns: repeat(2, 1fr); } .main { padding: 12px; } .row, .queue-card { grid-template-columns: 1fr; flex-wrap: wrap; } .queue-actions { justify-content: flex-start; min-width: 0; } .row-actions { width: 100%; justify-content: flex-start; padding-left: 42px; } .blog-grid { grid-template-columns: 1fr; } .blog-card:nth-child(odd) { border-right: none; } .cockpit-title { font-size: 20px; } .chart-box { height: 230px; } }
+    @media (max-width: 720px) { .ops-rail { align-items: flex-start; } .rail-profile { display: none; } .top-bar, .cockpit-hero, .automation-strip, .workstream-intro { align-items: flex-start; } .cockpit, .command-board { padding: 12px; } .kpi-grid { grid-template-columns: repeat(2, 1fr); } .main { padding: 12px; } .row, .queue-card { grid-template-columns: 1fr; flex-wrap: wrap; } .queue-actions { justify-content: flex-start; min-width: 0; } .row-actions { width: 100%; justify-content: flex-start; padding-left: 42px; } .journey-list { grid-template-columns: 1fr; } .journey-event { grid-template-columns: 34px minmax(0, 1fr); } .journey-meta { grid-column: 2; text-align: left; min-width: 0; } .blog-grid { grid-template-columns: 1fr; } .blog-card:nth-child(odd) { border-right: none; } .cockpit-title { font-size: 20px; } .chart-box { height: 230px; } }
   </style>
 </head>
 <body class="admin-ops">
@@ -1039,6 +1188,7 @@ $urgentActions = count($workstreamItems);
           <?php if ($canSeeOps): ?><a class="rail-link" href="admin_repairs.php"><i class="fa-solid fa-screwdriver-wrench"></i>Repairs</a><?php endif; ?>
           <?php if ($canSeeInventory): ?><a class="rail-link" href="admin_inventory.php"><i class="fa-solid fa-boxes-stacked"></i>Inventory</a><?php endif; ?>
           <?php if ($canSeeFinance || $canManageBusiness): ?><a class="rail-link" href="admin_orders.php"><i class="fa-solid fa-receipt"></i>Orders</a><?php endif; ?>
+          <?php if ($canSeeFinance): ?><a class="rail-link" href="admin_payments.php"><i class="fa-solid fa-credit-card"></i>Payments</a><?php endif; ?>
           <?php if ($canManageBusiness): ?><a class="rail-link" href="admin_products.php"><i class="fa-solid fa-tags"></i>Products</a><?php endif; ?>
         </nav>
       </div>
@@ -1046,9 +1196,9 @@ $urgentActions = count($workstreamItems);
       <div class="rail-section">
         <div class="rail-section-label">Decision Layer</div>
         <nav class="rail-nav">
-          <?php if ($canSeeFinance): ?><a class="rail-link" href="#healthChart"><i class="fa-solid fa-credit-card"></i>Payments</a><?php endif; ?>
-          <?php if ($canSeeOps): ?><a class="rail-link" href="#bookings"><i class="fa-solid fa-list-check"></i>Workstreams</a><?php endif; ?>
-          <?php if ($canManageBusiness): ?><a class="rail-link" href="#blog"><i class="fa-solid fa-lightbulb"></i>Demand Signals</a><?php endif; ?>
+          <a class="rail-link" href="admin_tracking.php"><i class="fa-solid fa-route"></i>Customer Tracking</a>
+          <?php if ($canSeeOps): ?><a class="rail-link" href="admin_repairs.php"><i class="fa-solid fa-list-check"></i>Workstreams</a><?php endif; ?>
+          <?php if ($canManageBusiness): ?><a class="rail-link" href="admin_blog.php"><i class="fa-solid fa-lightbulb"></i>Demand Signals</a><?php endif; ?>
         </nav>
       </div>
 
@@ -1104,7 +1254,7 @@ $urgentActions = count($workstreamItems);
             <div><div class="kpi-value"><?= h(money($kpis['today_revenue'])) ?></div><div class="kpi-note"><?= h(money($kpis['month_revenue'])) ?> month-to-date</div></div>
           </article>
           <article class="kpi-card">
-            <div class="kpi-top"><span>Payment success</span><span class="kpi-icon"><i class="fa-solid fa-circle-check"></i></span></div>
+            <div class="kpi-top"><span>Payment success</span><a class="action-btn" href="admin_payments.php">Open</a></div>
             <div><div class="kpi-value"><?= number_format((float) $kpis['payment_success_rate'], 1) ?>%</div><div class="kpi-note"><?= number_format((int) $kpis['payment_review']) ?> payments need review</div></div>
           </article>
         <?php endif; ?>
@@ -1156,7 +1306,7 @@ $urgentActions = count($workstreamItems);
               <h2><?= $canSeeFinance ? 'Payment health' : 'Inventory levels' ?></h2>
               <p><?= $canSeeFinance ? 'Last 30 days by status.' : 'Lowest stock categories.' ?></p>
             </div>
-            <span class="count-badge cb-blue">KPI</span>
+            <?php if ($canSeeFinance): ?><a class="action-btn" href="admin_payments.php">Payments</a><?php else: ?><span class="count-badge cb-blue">KPI</span><?php endif; ?>
           </div>
           <div class="chart-box small"><canvas id="healthChart"></canvas></div>
         </section>
@@ -1180,7 +1330,7 @@ $urgentActions = count($workstreamItems);
 
         <?php if ($canSeeOps): ?>
           <section class="insight-card">
-            <div class="insight-title"><span><i class="fa-solid fa-stopwatch"></i> Repair focus</span><a class="action-btn" href="admin_repairs.php">Queue</a></div>
+            <div class="insight-title"><span><i class="fa-solid fa-stopwatch"></i> Repair focus</span><a class="action-btn" href="admin_repairs.php">Track bookings</a></div>
             <div class="mini-list">
               <div class="mini-item"><div class="mini-main"><strong>New repair bookings</strong><span>Needs confirmation and diagnosis</span></div><div class="mini-value"><?= number_format((int) $metrics['bookings']) ?></div></div>
               <div class="mini-item"><div class="mini-main"><strong>Parts blockers</strong><span>Matched against low stock</span></div><div class="mini-value"><?= number_format((int) $metrics['parts']) ?></div></div>
@@ -1188,6 +1338,83 @@ $urgentActions = count($workstreamItems);
             </div>
           </section>
         <?php endif; ?>
+
+        <?php if ($canManageBusiness || $canSeeFinance || $canSeeInventory): ?>
+          <section class="insight-card">
+            <div class="insight-title">
+              <span><i class="fa-solid fa-wand-magic-sparkles"></i> Predictive analytics</span>
+              <span class="count-badge <?= $analyticsAvailable ? 'cb-teal' : 'cb-gray' ?>"><?= $analyticsAvailable ? 'FastAPI' : 'Offline' ?></span>
+            </div>
+            <div class="mini-list">
+              <?php if (!$analyticsAvailable): ?>
+                <div class="empty">Analytics service is offline. Start FastAPI on port 8001 to enable forecasts.</div>
+              <?php endif; ?>
+
+              <?php if ($canSeeFinance && (bool) ($analyticsForecast['_available'] ?? false)): ?>
+                <div class="mini-item">
+                  <div class="mini-main">
+                    <strong>30-day revenue forecast</strong>
+                    <span><?= h(ucfirst((string) ($analyticsForecast['confidence'] ?? 'low'))) ?> confidence<?= !empty($analyticsForecast['_cached']) ? ' - cached' : '' ?></span>
+                  </div>
+                  <div class="mini-value"><?= h(money($analyticsForecast['forecast_30d_total'] ?? 0)) ?></div>
+                </div>
+              <?php endif; ?>
+
+              <?php if (($canManageBusiness || $canSeeInventory) && $analyticsReorderRows !== []): ?>
+                <?php foreach (array_slice($analyticsReorderRows, 0, 3) as $signal): ?>
+                  <div class="mini-item">
+                    <div class="mini-main">
+                      <strong><?= h(($signal['brand'] ?? '') . ' ' . ($signal['model'] ?? '')) ?></strong>
+                      <span><?= h($signal['part_type'] ?? 'Part') ?> - <?= h($signal['urgency'] ?? 'ok') ?> reorder signal</span>
+                    </div>
+                    <div class="mini-value"><?= number_format((float) ($signal['days_until_stockout'] ?? 0), 1) ?> days</div>
+                  </div>
+                <?php endforeach; ?>
+              <?php endif; ?>
+
+              <?php if ($canManageBusiness && (bool) ($analyticsCohorts['_available'] ?? false)): ?>
+                <div class="mini-item">
+                  <div class="mini-main"><strong>Customer cohorts</strong><span>Customers with order history analyzed</span></div>
+                  <div class="mini-value"><?= number_format(count($analyticsCohortRows)) ?></div>
+                </div>
+              <?php endif; ?>
+            </div>
+          </section>
+        <?php endif; ?>
+
+        <section class="insight-card journey-panel" id="customerJourney">
+          <div class="insight-title">
+            <span><i class="fa-solid fa-route"></i> Customer journey</span>
+            <a class="action-btn" href="admin_tracking.php">Respond</a>
+          </div>
+          <div class="journey-list">
+            <?php if ($customerJourney === []): ?>
+              <div class="empty">No customer journey events in the last 24 hours.</div>
+            <?php endif; ?>
+            <?php foreach (array_slice($customerJourney, 0, 10) as $event): ?>
+              <?php
+                $eventType = (string) ($event['event_type'] ?? '');
+                $eventIcon = $eventType === 'repair' ? 'fa-screwdriver-wrench' : ($eventType === 'payment' ? 'fa-credit-card' : 'fa-bag-shopping');
+                $eventTone = $eventType === 'repair' ? 'ri-blue' : ($eventType === 'payment' ? 'ri-amber' : 'ri-teal');
+                $eventHref = $eventType === 'repair'
+                    ? 'admin_repairs.php'
+                    : ($eventType === 'payment' ? 'admin_payments.php' : 'admin_orders.php');
+                $eventValue = $eventType === 'payment' && $canSeeFinance ? ' - ' . money($event['value'] ?? 0) : '';
+              ?>
+              <a class="journey-event" href="<?= h($eventHref) ?>">
+                <span class="journey-icon <?= h($eventTone) ?>"><i class="fa-solid <?= h($eventIcon) ?>"></i></span>
+                <span class="journey-main">
+                  <strong><?= h($event['actor'] ?? 'Customer') ?></strong>
+                  <span><?= h(ucfirst($eventType)) ?> - <?= h($event['subject'] ?? 'Activity') ?><?= h($eventValue) ?></span>
+                </span>
+                <span class="journey-meta">
+                  <strong><?= h((string) ($event['state'] ?? 'new')) ?></strong>
+                  <span><?= h(time_ago((string) ($event['created_at'] ?? ''))) ?></span>
+                </span>
+              </a>
+            <?php endforeach; ?>
+          </div>
+        </section>
 
         <section class="insight-card">
           <div class="insight-title"><span><i class="fa-solid fa-signal"></i> Recent signals</span><span class="count-badge cb-gray"><?= count($recentSignals) ?></span></div>
@@ -1228,6 +1455,7 @@ $urgentActions = count($workstreamItems);
         </p>
       </div>
       <div class="workstream-meta" id="urgent-count"><i class="fa-solid fa-list-check"></i><?= number_format($urgentActions) ?> open actions</div>
+      <?php if ($canSeeOps): ?><a class="action-btn" href="admin_repairs.php">Track bookings</a><?php endif; ?>
     </section>
 
     <section class="command-board" aria-label="Prioritized action queue">

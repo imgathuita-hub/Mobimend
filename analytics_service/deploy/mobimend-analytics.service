@@ -1,0 +1,15 @@
+[Unit]
+Description=Mobimend FastAPI Analytics
+After=network.target mysql.service
+
+[Service]
+WorkingDirectory=/var/www/Mobimend/analytics_service
+Environment=DATABASE_URL=mysql+pymysql://mobimend_user:change_this_password@127.0.0.1:3306/mobimend?charset=utf8mb4
+ExecStart=/var/www/Mobimend/analytics_service/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

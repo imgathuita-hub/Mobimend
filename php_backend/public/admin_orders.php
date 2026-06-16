@@ -10,7 +10,7 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 use Mobimend\Config\Database;
 
 $pdo = Database::connection();
-$adminRoles = ['admin', 'super_admin', 'technician'];
+$adminRoles = ['admin', 'super_admin', 'technician', 'finance'];
 $user = $_SESSION['admin_user'] ?? null;
 if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, true)) {
     unset($_SESSION['admin_user']);
@@ -18,6 +18,51 @@ if (is_array($user) && !in_array((string) ($user['role'] ?? ''), $adminRoles, tr
 }
 $message = (string) ($_GET['message'] ?? '');
 $tone = (string) ($_GET['tone'] ?? 'info');
+$role = is_array($user) ? (string) ($user['role'] ?? '') : '';
+$canSeePayments = in_array($role, ['admin', 'super_admin', 'finance'], true);
+
+function h(mixed $value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+function pretty_status(mixed $status): string
+{
+    return ucwords(str_replace(['_', '-'], ' ', (string) $status));
+}
+
+function pretty_date(mixed $value): string
+{
+    $timestamp = strtotime((string) $value);
+
+    return $timestamp ? date('M j, Y g:i A', $timestamp) : '';
+}
+
+function order_track_url(array $order): string
+{
+    $query = ['ref' => (string) ($order['order_number'] ?? '')];
+    if (!empty($order['customer_phone'])) {
+        $query['phone'] = (string) $order['customer_phone'];
+    }
+
+    return 'track.php?' . http_build_query($query);
+}
+
+function status_class(mixed $status): string
+{
+    $value = strtolower((string) $status);
+    if (in_array($value, ['paid', 'completed', 'ready', 'shipped', 'confirmed'], true)) {
+        return 'good';
+    }
+    if (in_array($value, ['failed', 'cancelled', 'refunded'], true)) {
+        return 'bad';
+    }
+    if (in_array($value, ['pending', 'processing', 'partially_paid', 'requires_review', 'unpaid'], true)) {
+        return 'warn';
+    }
+
+    return 'neutral';
+}
 
 if (!$user && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
@@ -132,7 +177,7 @@ if ($user) {
     .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px; box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06); }
     .stats-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
     .stat { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
-    .stat span { color: #64748b; display: block; }
+    .stat span { color: #64748b; display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .stat strong { display: block; margin-top: 6px; font-size: 1.45rem; }
     .banner { margin-bottom: 14px; border-radius: 8px; padding: 12px 14px; font-weight: 700; }
     .banner.success { background: #ecfdf5; color: #166534; border: 1px solid #bbf7d0; }
@@ -140,13 +185,36 @@ if ($user) {
     .banner.info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
     input, select, button { border-radius: 8px; border: 1px solid #d1d5db; padding: 10px; font: inherit; }
     button { background: #1766c5; color: #fff; border: 0; font-weight: 800; cursor: pointer; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 11px; border-bottom: 1px solid #eef2f7; text-align: left; vertical-align: top; }
-    th { background: #f8fafc; }
-    .table-wrap { overflow-x: auto; }
     .muted { color: #64748b; }
-    .inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    @media (max-width: 980px) { .stats-row { grid-template-columns: 1fr; } }
+    .orders-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+    .orders-head h2 { margin: 0; }
+    .orders-head p { margin: 5px 0 0; color: #64748b; max-width: 720px; }
+    .orders-grid { display: grid; gap: 12px; }
+    .order-card { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(180px, .9fr) minmax(190px, .9fr) minmax(310px, 1.35fr); gap: 16px; align-items: stretch; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+    .order-card:hover { border-color: #cbd5e1; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06); }
+    .order-main { display: grid; gap: 10px; align-content: start; }
+    .order-number { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .order-number strong { font-size: 17px; }
+    .order-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #64748b; font-size: 12px; }
+    .type-chip, .status-pill { display: inline-flex; align-items: center; min-height: 24px; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 900; }
+    .type-chip { background: #eef2f7; color: #334155; }
+    .status-pill.good { background: #dcfce7; color: #166534; }
+    .status-pill.warn { background: #fef3c7; color: #92400e; }
+    .status-pill.bad { background: #fee2e2; color: #991b1b; }
+    .status-pill.neutral { background: #e0f2fe; color: #075985; }
+    .customer-block, .money-block, .update-panel { display: grid; gap: 8px; align-content: start; }
+    .label { color: #64748b; font-size: 11px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+    .money { font-size: 18px; font-weight: 900; color: #111827; }
+    .payment-line { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .inline-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 8px; align-items: end; }
+    .inline-form label { display: grid; gap: 5px; color: #64748b; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .inline-form select { width: 100%; min-width: 0; }
+    .order-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+    .button-link { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; border-radius: 8px; padding: 8px 11px; border: 1px solid #d8dee8; background: #f8fafc; color: #334155; text-decoration: none; font-size: 12px; font-weight: 900; }
+    .button-link.primary { border-color: #1766c5; background: #1766c5; color: #fff; }
+    .empty-state { padding: 28px; border: 1px dashed #cbd5e1; border-radius: 8px; color: #64748b; background: #f8fafc; }
+    @media (max-width: 1100px) { .order-card { grid-template-columns: 1fr 1fr; } .inline-form { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 760px) { .stats-row, .order-card, .inline-form { grid-template-columns: 1fr; } .shell { padding: 14px 12px 24px; } .orders-head { flex-direction: column; } }
   </style>
 </head>
 <body class="admin-ops">
@@ -158,6 +226,7 @@ if ($user) {
       </div>
       <nav class="ops-nav" aria-label="Admin navigation">
         <a href="admin_dashboard.php">Operations</a>
+        <?php if ($canSeePayments): ?><a href="admin_payments.php">Payments</a><?php endif; ?>
         <a href="admin_inventory.php">Inventory</a>
         <a class="active" href="admin_orders.php">Orders</a>
         <a href="admin_repairs.php">Repairs</a>
@@ -165,14 +234,11 @@ if ($user) {
         <a href="logout.php">Logout</a>
       </nav>
     </div>
-    <h1>Mobimend Orders Command Center</h1>
-    <p>Retail and wholesale order reconciliation, payment status, revenue, and fulfillment state.</p>
-    <p><a href="admin_products.php">Products</a> · <a href="admin_inventory.php">Inventory</a> · <a href="accessories.php">Shop</a> · <a href="wholesale.php">Wholesale</a></p>
   </header>
 
   <main class="shell">
     <?php if ($message !== ''): ?>
-      <div class="banner <?= htmlspecialchars($tone) ?>"><?= htmlspecialchars($message) ?></div>
+      <div class="banner <?= h($tone) ?>"><?= h($message) ?></div>
     <?php endif; ?>
 
     <?php if (!$user): ?>
@@ -198,65 +264,90 @@ if ($user) {
       </section>
 
       <section class="card">
-        <h2>Orders</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Customer</th>
-                <th>Total</th>
-                <th>Payment</th>
-                <th>Status</th>
-                <th>Update</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php if ($orders === []): ?>
-                <tr><td colspan="6" class="muted">No orders yet. Retail and wholesale checkouts will appear here.</td></tr>
-              <?php endif; ?>
-              <?php foreach ($orders as $order): ?>
-                <tr>
-                  <td>
-                    <strong><?= htmlspecialchars((string) $order['order_number']) ?></strong><br>
-                    <span class="muted"><?= htmlspecialchars((string) $order['order_type']) ?> · <?= htmlspecialchars((string) $order['created_at']) ?></span>
-                  </td>
-                  <td>
-                    <?= htmlspecialchars((string) $order['customer_name']) ?><br>
-                    <span class="muted"><?= htmlspecialchars((string) $order['customer_phone']) ?></span>
-                  </td>
-                  <td>KES <?= number_format((float) $order['grand_total'], 2) ?></td>
-                  <td>
-                    <?= htmlspecialchars((string) ($order['payment_method'] ?? 'pending')) ?><br>
-                    <span class="muted"><?= htmlspecialchars((string) ($order['payment_record_status'] ?? $order['payment_status'])) ?></span>
-                  </td>
-                  <td><?= htmlspecialchars((string) $order['status']) ?><br><span class="muted"><?= htmlspecialchars((string) $order['payment_status']) ?></span></td>
-                  <td>
-                    <form method="post" class="inline-form">
-                      <input type="hidden" name="action" value="update_order">
-                      <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
-                      <select name="status">
-                        <?php foreach (['pending', 'confirmed', 'processing', 'ready', 'shipped', 'completed', 'cancelled', 'refunded'] as $status): ?>
-                          <option value="<?= $status ?>" <?= $order['status'] === $status ? 'selected' : '' ?>><?= $status ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <select name="payment_status">
-                        <?php foreach (['unpaid', 'partially_paid', 'paid', 'failed', 'refunded'] as $paymentStatus): ?>
-                          <option value="<?= $paymentStatus ?>" <?= $order['payment_status'] === $paymentStatus ? 'selected' : '' ?>><?= $paymentStatus ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <select name="payment_record_status">
-                        <?php foreach (['pending', 'processing', 'paid', 'failed', 'cancelled', 'refunded', 'requires_review'] as $paymentRecordStatus): ?>
-                          <option value="<?= $paymentRecordStatus ?>" <?= ($order['payment_record_status'] ?? '') === $paymentRecordStatus ? 'selected' : '' ?>><?= $paymentRecordStatus ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <button type="submit">Save</button>
-                    </form>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
+        <div class="orders-head">
+          <div>
+            <h2>Orders</h2>
+            <p>Scan fulfillment state, payment confidence, customer details, and the customer-facing tracking page from one workspace.</p>
+          </div>
+          <a class="button-link primary" href="track.php">Track customer order</a>
+        </div>
+
+        <div class="orders-grid">
+          <?php if ($orders === []): ?>
+            <div class="empty-state">No orders yet. Retail and wholesale checkouts will appear here.</div>
+          <?php endif; ?>
+
+          <?php foreach ($orders as $order): ?>
+            <?php
+              $paymentRecordStatus = (string) ($order['payment_record_status'] ?? $order['payment_status'] ?? 'pending');
+              $paymentMethod = (string) ($order['payment_method'] ?? 'pending');
+            ?>
+            <article class="order-card">
+              <div class="order-main">
+                <div class="order-number">
+                  <strong><?= h($order['order_number']) ?></strong>
+                  <span class="type-chip"><?= h(pretty_status($order['order_type'])) ?></span>
+                </div>
+                <div class="order-meta">
+                  <span><?= h(pretty_date($order['created_at'])) ?></span>
+                  <?php if (!empty($order['mpesa_receipt_number'])): ?><span>Receipt <?= h($order['mpesa_receipt_number']) ?></span><?php endif; ?>
+                </div>
+                <div class="payment-line">
+                  <span class="status-pill <?= h(status_class($order['status'])) ?>"><?= h(pretty_status($order['status'])) ?></span>
+                  <span class="status-pill <?= h(status_class($order['payment_status'])) ?>"><?= h(pretty_status($order['payment_status'])) ?></span>
+                </div>
+              </div>
+
+              <div class="customer-block">
+                <span class="label">Customer</span>
+                <strong><?= h($order['customer_name'] ?: 'Unknown customer') ?></strong>
+                <span class="muted"><?= h($order['customer_phone'] ?: 'No phone on order') ?></span>
+                <?php if (!empty($order['customer_email'])): ?><span class="muted"><?= h($order['customer_email']) ?></span><?php endif; ?>
+              </div>
+
+              <div class="money-block">
+                <span class="label">Commercials</span>
+                <span class="money">KES <?= number_format((float) $order['grand_total'], 2) ?></span>
+                <div class="payment-line">
+                  <span class="type-chip"><?= h(pretty_status($paymentMethod)) ?></span>
+                  <span class="status-pill <?= h(status_class($paymentRecordStatus)) ?>"><?= h(pretty_status($paymentRecordStatus)) ?></span>
+                </div>
+              </div>
+
+              <div class="update-panel">
+                <form method="post" class="inline-form">
+                  <input type="hidden" name="action" value="update_order">
+                  <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                  <label>Fulfillment
+                    <select name="status">
+                      <?php foreach (['pending', 'confirmed', 'processing', 'ready', 'shipped', 'completed', 'cancelled', 'refunded'] as $status): ?>
+                        <option value="<?= h($status) ?>" <?= $order['status'] === $status ? 'selected' : '' ?>><?= h(pretty_status($status)) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label>Order pay
+                    <select name="payment_status">
+                      <?php foreach (['unpaid', 'partially_paid', 'paid', 'failed', 'refunded'] as $paymentStatus): ?>
+                        <option value="<?= h($paymentStatus) ?>" <?= $order['payment_status'] === $paymentStatus ? 'selected' : '' ?>><?= h(pretty_status($paymentStatus)) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label>Payment record
+                    <select name="payment_record_status">
+                      <?php foreach (['pending', 'processing', 'paid', 'failed', 'cancelled', 'refunded', 'requires_review'] as $recordStatus): ?>
+                        <option value="<?= h($recordStatus) ?>" <?= ($order['payment_record_status'] ?? '') === $recordStatus ? 'selected' : '' ?>><?= h(pretty_status($recordStatus)) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <button type="submit">Save</button>
+                </form>
+                <div class="order-actions">
+                  <a class="button-link" href="<?= h(order_track_url($order)) ?>">Open tracking</a>
+                  <?php if ($canSeePayments): ?><a class="button-link" href="admin_payments.php?q=<?= h(urlencode((string) $order['order_number'])) ?>">Payments</a><?php endif; ?>
+                </div>
+              </div>
+            </article>
+          <?php endforeach; ?>
         </div>
       </section>
     <?php endif; ?>

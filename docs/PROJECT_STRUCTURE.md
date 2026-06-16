@@ -9,9 +9,10 @@ This repository uses `php_backend` as the canonical PHP/MySQL product backend. L
 | `php_backend/` | Main PHP/MySQL application: public PHP pages, DB schema, bootstrap, config, helpers. | Primary |
 | `php_backend/public/` | Browser-facing PHP entry points such as repair booking, wholesale checkout, and admin screens. | Primary |
 | `php_backend/database/schema.sql` | Canonical MySQL schema for the commerce, repair, wholesale, payment, blog, and admin model. | Primary |
+| `analytics_service/` | FastAPI analytics microservice for forecasts, reorder signals, retention cohorts, and dashboard charts. | Phase 2 service |
 | `public/` | Static HTML/CSS/JS prototype and image assets. Good for design migration into PHP pages. | Prototype |
 | `public/assets/` | Brand, repair, part, device, staff, and marketing images. | Shared assets |
-| `backend/` | Node/Mongo API for auth, inventory service routes, movement audit, and queued low-stock alerts. | Service |
+| `backend/` | Older Node/Mongo API for auth and inventory experiments. Keep as reference while PHP services replace it. | Legacy/reference |
 | `app/` | Older MVC-style PHP folders without a complete current entry point. | Legacy/reference |
 | `server/` | Empty or unused server workspace. | Archive candidate |
 | `storage/` | Logs and future upload storage. | Keep |
@@ -25,6 +26,7 @@ Do not move working files until the PHP backend is stable. Instead, consolidate 
 - Store product media in cloud object storage and save HTTPS URLs in `media_url`.
 - Reuse image files from `public/assets` until there is a dedicated asset pipeline.
 - Move static HTML prototypes into `docs/prototypes` later, after each page has a PHP equivalent.
+- Treat `backend/` as a legacy source of ideas, not a required runtime service for the target architecture.
 
 ## Page Map
 
@@ -44,8 +46,8 @@ Admin pages:
 - `admin_dashboard.php`: primary operations cockpit for bookings, parts, low stock, payments, wholesale approvals, and blog prompts.
 - `admin_inventory.php`: stock, product, variant, and low-stock work.
 - `admin_orders.php`: order list, status updates, invoice printing.
+- `admin_payments.php`: payments-only ledger for finance review, M-Pesa receipts, checkout references, bank references, and verification state.
 - `admin_repairs.php`: booking list, technician assignment, repair status.
-- `admin_payments.php`: M-Pesa callbacks, bank statement upload review, reconciliation.
 - `admin_users.php`: customers, staff, permissions, wholesale approvals.
 - `admin_blog.php`: category and post publishing.
 - `admin_reports.php`: sales, stock movement, popular products, repair statistics.
@@ -55,6 +57,7 @@ Admin pages:
 PHP can expose JSON endpoints under `php_backend/public/api`. Keep endpoints grouped by domain:
 
 - `api/products.php`
+- `api/health.php`
 - `api/orders.php`
 - `api/bookings.php`
 - `api/payments/mpesa_callback.php`
@@ -62,4 +65,15 @@ PHP can expose JSON endpoints under `php_backend/public/api`. Keep endpoints gro
 - `api/inventory.php`
 - `api/reports.php`
 
-Python can be added later as a support service for diagnostics, forecasting, recommendations, or data imports without taking over the core PHP checkout and admin flows.
+## Target Architecture Alignment
+
+The current target is:
+
+- Client layer: current PHP pages, with future React admin SPA, mobile apps, and WhatsApp bot.
+- API gateway: future `php_backend/public/api/` endpoints behind nginx and rate limiting.
+- Service layer: PHP service classes for order, tracking, blog, notification, and payment behavior.
+- Job queue: existing `payment_callback_queue`, plus inventory alert jobs and future SMS/reorder/analytics jobs.
+- Data layer: MySQL primary today, Redis cache where available, and Python analytics over the MySQL data set.
+- Infrastructure: XAMPP/cPanel/shared hosting now, VPS/nginx next, Docker/load balancer later.
+
+Python is now present as `analytics_service/`; it supports diagnostics, forecasting, recommendations, and dashboard intelligence without taking over PHP checkout/admin flows.

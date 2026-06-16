@@ -17,6 +17,7 @@ backend/.env.*
 storage/php-sessions/
 storage/backups/
 storage/logs/
+storage/pycache/
 
 # ── Uploaded files (serve from CDN in production) ─────────────
 php_backend/public/uploads/products/*

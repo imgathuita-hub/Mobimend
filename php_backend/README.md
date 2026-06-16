@@ -21,6 +21,8 @@ This folder is the recommended main implementation path for the Mobimend PHP/MyS
 - MySQL or MariaDB
 - PDO
 - PHP sessions for admin login
+- Optional Redis extension for dashboard and analytics caching
+- Optional FastAPI analytics service at `ANALYTICS_API_BASE`
 
 ## Setup
 
@@ -39,6 +41,7 @@ This folder is the recommended main implementation path for the Mobimend PHP/MyS
 - `repair.php` creates repair bookings directly in MySQL.
 - `accessories.php` reads live product variants, creates retail orders, payment records, stock movements, and inventory transactions.
 - `wholesale.php` reads from `inventory_items`, enforces MOQ, creates wholesale orders, and records checkout activity in `stock_movements` plus `inventory_transactions`.
+- `AnalyticsClient` calls the Python analytics service and falls back to file cache when Redis is unavailable.
 
 ## Current Data Model
 
