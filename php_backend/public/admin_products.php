@@ -437,8 +437,7 @@ $recentTransactions = [];
 if ($user) {
     $catalogChannelSelect = $hasCatalogChannel ? 'p.catalog_channel' : '"shop" AS catalog_channel';
     $variants = $pdo->query(
-        'SELECT pv.*, p.id AS product_id, p.name, p.sku AS product_sku, p.brand, p.compatible_model, p.minimum_wholesale_quantity, p.media_url, p.category_id, p.status, ' . $catalogChannelSelect . ', pc.name AS category_name
-         FROM product_variants pv
+        'SELECT pv.*, p.id AS product_id, p.name, p.sku AS product_sku, p.brand, p.compatible_model, p.minimum_wholesale_quantity, p.media_url, p.category_id, p.status, ' . $catalogChannelSelect . ' FROM product_variants pv
          INNER JOIN products p ON p.id = pv.product_id
          LEFT JOIN product_categories pc ON pc.id = p.category_id
          ORDER BY p.created_at DESC, pv.created_at DESC'
@@ -498,9 +497,9 @@ if ($user) {
     .stack { display: grid; gap: 12px; }
     .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .inline-form input { width: 110px; }
-    .catalog-product-cell { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; align-items: start; }
-    .catalog-product-cell img { width: 58px; height: 58px; object-fit: cover; border-radius: 8px; background: #eef2f7; }
-    .catalog-thumb { width: 58px; height: 58px; object-fit: cover; border-radius: 8px; background: #eef2f7; margin-bottom: 8px; }
+    .catalog-product-cell { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .catalog-product-cell img { width: 150px; height: 150px; object-fit: cover; border-radius: 8px; background: #eef2f7; }
+    .catalog-thumb { width: 150px; height: 150px; object-fit: cover; border-radius: 8px; background: #eef2f7; margin-bottom: 8px; }
     .catalog-edit-form { display: grid; gap: 8px; min-width: 230px; }
     .catalog-edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .catalog-edit-form input[type="file"], .catalog-edit-form input[name="media_url"] { width: 100%; }
@@ -525,7 +524,7 @@ if ($user) {
     </div>
     <h1>Mobimend Product Command Center</h1>
     <p>Catalog, variants, stock levels, wholesale rules, and inventory movement in one practical admin view.</p>
-    <p><a href="admin_orders.php">Orders</a> · <a href="admin_inventory.php">Legacy inventory</a> · <a href="accessories.php">Retail shop</a> · <a href="wholesale.php">Wholesale desk</a> · <a href="logout.php">Logout</a></p>
+    <p><a href="admin_orders.php">Orders</a> · <a href="admin_inventory.php">Legacy inventory</a> · <a href="accessories.php">Retail shop</a> · <a href="wholesale.php">Wholesale desk</a> · <a href="blog.php">Blog</a></p>
   </header>
 
   <main class="admin-shell">
